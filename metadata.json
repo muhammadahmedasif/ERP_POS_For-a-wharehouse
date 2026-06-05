@@ -1,0 +1,8 @@
+{
+  "name": "Wholesale ERP",
+  "description": "Enterprise-grade Wholesale Distribution Management System supporting multi-language and AI features.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
