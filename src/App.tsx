@@ -50,18 +50,18 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   const location = useLocation();
 
   const menuItems = [
-    { name: t("dashboard"), icon: LayoutDashboard, path: "/" },
+    { name: "Home", icon: LayoutDashboard, path: "/" },
     { name: t("inventory"), icon: Package, path: "/inventory" },
     { name: "Categories", icon: Tag, path: "/categories" },
     { name: "Brands", icon: Bookmark, path: "/brands" },
     { name: "Customers", icon: Users, path: "/customers" },
     { name: t("sales"), icon: ShoppingCart, path: "/sales" },
     { name: "New Sale", icon: PlusCircle, path: "/sales/new" },
-    { name: "Top Products", icon: Award, path: "/top-products" },
+    { name: "Top Items", icon: Award, path: "/top-products" },
     { name: "Reports", icon: FileText, path: "/reports" },
     { name: "Settings", icon: SettingsIcon, path: "/settings" },
-    { name: t("ai_assistant"), icon: Bot, path: "/ai" },
-    { name: "Help & Support", icon: HelpCircle, path: "/help" },
+    { name: "Assistant", icon: Bot, path: "/ai" },
+    { name: "Help", icon: HelpCircle, path: "/help" },
   ];
 
   return (
@@ -76,22 +76,22 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 
       <aside
         className={cn(
-          "bg-[#0f172a] text-slate-300 flex flex-col shrink-0 h-screen font-sans border-r border-[#1e293b] transition-transform duration-250 z-50",
+          "bg-slate-950 text-slate-300 flex flex-col shrink-0 h-screen font-sans border-r border-slate-800 transition-transform duration-250 z-50 shadow-2xl shadow-slate-950/20",
           "fixed inset-y-0 left-0 w-64 lg:static lg:flex lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
         <div className="p-5 flex items-center justify-between border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-gradient-to-tr from-indigo-500 to-indigo-700 rounded-lg flex items-center justify-center font-bold text-white text-md shadow-xs">
-              <Boxes className="w-5 h-5 text-indigo-100" />
+            <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center font-bold text-white text-md shadow-lg shadow-emerald-950/30">
+              <Boxes className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-white font-extrabold text-sm leading-none tracking-tight">
-                Apex Distro ERP
+              <h1 className="text-white font-extrabold text-base leading-none tracking-tight">
+                StockPilot
               </h1>
-              <p className="text-[9px] text-[#818cf8] uppercase tracking-wider font-extrabold mt-1">
-                Enterprise Logistics
+              <p className="text-[10px] text-emerald-300 uppercase tracking-wider font-extrabold mt-1">
+                Sales & Inventory
               </p>
             </div>
           </div>
@@ -114,12 +114,12 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
                 to={item.path}
                 onClick={onClose}
                 className={cn(
-                  "rounded-lg px-3 py-2 flex items-center gap-2.5 transition-colors text-xs font-medium",
+                  "rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all text-[13px] font-semibold",
                   isNewSale
-                    ? "my-2 bg-emerald-500 text-white shadow-md shadow-emerald-950/30 hover:bg-emerald-400 font-extrabold"
+                    ? "my-2 bg-emerald-500 text-white shadow-lg shadow-emerald-950/30 hover:bg-emerald-400 font-extrabold text-sm"
                     : isActive
-                      ? "bg-indigo-600 text-white"
-                      : "hover:bg-slate-800 text-slate-300",
+                      ? "bg-white text-slate-950 shadow-sm"
+                      : "hover:bg-slate-800 text-slate-300 hover:text-white",
                 )}
               >
                 <Icon className="w-4 h-4 shrink-0" />
@@ -140,36 +140,36 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
   const getPageTitle = () => {
     switch (location.pathname) {
       case "/":
-        return "Dashboard Overview";
+        return "Home";
       case "/inventory":
-        return "Inventory & Stock Control";
+        return "Inventory";
       case "/categories":
         return "Product Categories";
       case "/brands":
         return "Brand Management";
       case "/customers":
-        return "Customer Accounts Ledger";
+        return "Customers";
       case "/sales":
-        return "Sales Invoices Ledger";
+        return "Sales";
       case "/sales/new":
-        return "Create New Sale Bill";
+        return "New Sale";
       case "/top-products":
-        return "Product Performance Analytics";
+        return "Top Items";
       case "/reports":
-        return "Operational Intelligence Reports";
+        return "Reports";
       case "/settings":
-        return "Global System Settings";
+        return "Settings";
       case "/ai":
-        return "Intelligent Voice Assistant";
+        return "Assistant";
       case "/help":
-        return "Help & Customer Support Desk";
+        return "Help";
       default:
-        return "Distribution ERP Portal";
+        return "StockPilot";
     }
   };
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white/70 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-4 sm:px-8 shrink-0 shadow-xs">
+    <header className="sticky top-0 z-30 h-16 bg-white/85 backdrop-blur-xl border-b border-slate-200/70 flex items-center justify-between px-4 sm:px-8 shrink-0 shadow-sm shadow-slate-200/50">
       <div className="flex items-center gap-4">
         {user && (
           <button
@@ -183,7 +183,7 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
         {user && (
           <div className="hidden sm:flex flex-col select-none">
             <span className="text-[9px] uppercase tracking-widest text-indigo-600 font-extrabold">
-              {settings.storeName || "W-Distro ERP Portal"}
+              {settings.storeName || "StockPilot"}
             </span>
             <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-none mt-1">
               {getPageTitle()}
@@ -197,7 +197,7 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
             <>
               <button 
                 onClick={() => useAppStore.getState().logout()} 
-                className="text-xs bg-red-500 text-white px-2.5 py-1 rounded select-none cursor-pointer hover:bg-red-650 transition-all active:scale-[0.98]"
+                className="text-xs bg-white text-slate-700 border border-slate-200 px-3 py-1.5 rounded-md select-none cursor-pointer hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-all active:scale-[0.98]"
               >
                 Logout
               </button>
@@ -218,7 +218,7 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
               </div>
             </>
           ) : (
-              <Link to="/login" className="text-xs bg-indigo-600 text-white px-3 py-1 rounded">Login</Link>
+              <Link to="/login" className="text-xs bg-slate-950 text-white px-3 py-1.5 rounded-md">Login</Link>
           )}
         </div>
       </div>
@@ -243,16 +243,15 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex h-[100dvh] bg-[#f8fafc] text-slate-900 overflow-hidden font-sans relative z-0">
+      <div className="flex h-[100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans relative z-0">
         {/* Global Premium Ambient Background */}
         <div className="absolute inset-0 pointer-events-none z-[-1] overflow-hidden">
-          <div className="absolute top-0 right-0 w-[80vw] h-[80vh] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-indigo-200/30 via-transparent to-transparent rounded-full opacity-60 mix-blend-multiply blur-3xl"></div>
-          <div className="absolute bottom-0 left-0 w-[60vw] h-[60vh] bg-[radial-gradient(ellipse_at_bottom_left,_var(--tw-gradient-stops))] from-blue-200/30 via-transparent to-transparent rounded-full opacity-60 mix-blend-multiply blur-3xl"></div>
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)]"></div>
         </div>
 
         <Toaster position="top-right" />
         {user && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-white/40 backdrop-blur-3xl">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-transparent">
           {user && <Navbar onMenuClick={() => setSidebarOpen(true)} />}
           <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-8">
             <Routes>

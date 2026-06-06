@@ -99,11 +99,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       categories: [],
       brands: [],
       customers: [],
-      settings: { storeName: 'W-Distro ERP', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
+      settings: { storeName: 'StockPilot', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
     });
   },
 
-  settings: { storeName: 'W-Distro ERP', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
+  settings: { storeName: 'StockPilot', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
   fetchSettings: async () => {
     const settings = await apiRequest<AppState["settings"]>("/api/settings");
     set({ settings });

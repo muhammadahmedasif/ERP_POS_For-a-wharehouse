@@ -29,14 +29,14 @@ export default function Signup() {
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm rounded-3xl bg-white/60 backdrop-blur-xl p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/50"
+        className="w-full max-w-sm rounded-lg bg-white p-8 shadow-xl shadow-slate-200/70 border border-slate-200/80"
       >
         <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-gradient-to-tr from-indigo-500 to-indigo-700 rounded-xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-200 mb-4">
+          <div className="w-12 h-12 bg-emerald-500 rounded-lg mx-auto flex items-center justify-center shadow-lg shadow-emerald-100 mb-4">
              <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>
           </div>
           <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Create Account</h2>
-          <p className="text-sm text-slate-500 mt-1">Join Apex Distro ERP</p>
+          <p className="text-sm text-slate-500 mt-1">Create your StockPilot account</p>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">

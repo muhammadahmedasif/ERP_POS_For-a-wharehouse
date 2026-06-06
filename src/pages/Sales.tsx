@@ -359,7 +359,10 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
           <Button variant="ghost" onClick={() => navigate('/sales')} className="p-2">
             <ArrowLeft className="w-5 h-5 text-slate-500" />
           </Button>
-          <h2 className="text-xl font-bold text-slate-800">New Sale / Bill Generation</h2>
+          <div>
+            <h2 className="text-2xl font-extrabold text-slate-900">New Sale</h2>
+            <p className="text-sm font-medium text-slate-500 mt-1">Search an item, add quantity, and complete the bill.</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-6">
@@ -383,7 +386,10 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
                       autoFocus
                       className="flex-1"
                     />
-                    <Button type="submit">Add to Bill</Button>
+                    <Button type="submit" className="h-11 px-5 bg-emerald-600 hover:bg-emerald-700 font-extrabold">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add
+                    </Button>
                   </div>
                   
                   {showSuggestions && barcodeInput && filteredProductsForSearch.length > 0 && (
@@ -773,8 +779,8 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
-          <h2 className="text-lg font-bold text-slate-800">{t('sales')} Ledger</h2>
-          <p className="text-xs text-slate-500">Track walk-in cash flow and wholesale regular customer balances.</p>
+          <h2 className="text-2xl font-extrabold text-slate-900">Sales</h2>
+          <p className="text-sm font-medium text-slate-500">View bills, print invoices, and create new sales.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
           <Button variant="outline" className="bg-white border hover:bg-gray-50 text-gray-800">
@@ -782,9 +788,10 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
           </Button>
           <Button
             onClick={() => navigate('/sales/new')}
-            className="h-12 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-lg shadow-emerald-100"
+            size="lg"
+            className="h-14 px-7 bg-emerald-600 hover:bg-emerald-700 text-white text-base font-black shadow-xl shadow-emerald-200"
           >
-            <Plus className="w-5 h-5 mr-2" /> New Sale
+            <Plus className="w-6 h-6 mr-2" /> New Sale
           </Button>
         </div>
       </div>
