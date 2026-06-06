@@ -227,8 +227,10 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
   useEffect(() => {
-    fetchSettings();
-  }, [fetchSettings]);
+    if (user) {
+      fetchSettings();
+    }
+  }, [fetchSettings, user]);
 
   return (
     <BrowserRouter>
@@ -251,6 +253,7 @@ export default function App() {
               <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
               <Route path="/verify-email" element={!user ? <VerifyEmail /> : <Navigate to="/" />} />
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
               <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
               <Route path="/brands" element={<ProtectedRoute><Brands /></ProtectedRoute>} />
@@ -262,6 +265,7 @@ export default function App() {
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/ai" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
               <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
+              <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
             </Routes>
           </main>
         </div>

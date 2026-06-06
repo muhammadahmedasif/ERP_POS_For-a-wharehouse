@@ -154,6 +154,31 @@ function sendDatabaseError(res: express.Response, error: any, fallback = "Databa
   return res.status(500).json({ error: message || fallback });
 }
 
+function getRequestUserId(req: express.Request): string {
+  const userId = (req as any).user?.userId;
+  if (!userId) {
+    throw new Error("Authenticated user is missing from request");
+  }
+  return userId;
+}
+
+function withOwner(req: express.Request, row: any = {}) {
+  return { ...row, user_id: getRequestUserId(req) };
+}
+
+function ownerFilter(req: express.Request) {
+  return { column: "user_id", value: getRequestUserId(req) };
+}
+
+function sendTenantSchemaError(res: express.Response, table: string, error: any) {
+  if (error?.code === "42703" || error?.code === "PGRST204" || String(error?.message || "").includes("user_id")) {
+    return res.status(500).json({
+      error: `Profile isolation is enabled, but the '${table}' table is missing a user_id column. Add user_id to this table before using the app.`,
+    });
+  }
+  return sendDatabaseError(res, error);
+}
+
 function mapProduct(p: any) {
   const [realSku, barcode, lowThresholdStr] = (p.sku || '').split('::');
   const imageUrl = p.image_url || '';
@@ -187,7 +212,7 @@ function normalizeBrandKey(value: any): string {
   return normalized;
 }
 
-async function findDuplicateProduct(name: any, category: any, brand: any, excludeId?: string) {
+async function findDuplicateProduct(req: express.Request, name: any, category: any, brand: any, excludeId?: string) {
   const normalizedName = normalizeProductKey(capitalizeText(name));
   const normalizedCategory = normalizeProductKey(capitalizeText(category));
   const normalizedBrand = normalizeBrandKey(capitalizeText(brand));
@@ -198,7 +223,8 @@ async function findDuplicateProduct(name: any, category: any, brand: any, exclud
 
   const { data, error } = await supabase
     .from('products')
-    .select('id,name,category_id,brand_id,image_url');
+    .select('id,name,category_id,brand_id,image_url')
+    .eq('user_id', getRequestUserId(req));
 
   if (error) throw error;
 
@@ -464,6 +490,7 @@ async function robustInsert(table: string, dbRow: any, excludedColumns: string[]
       const match = error.message.match(/find the '([^']+)' column/);
       if (match && match[1]) {
         const missingColumn = match[1];
+        if (missingColumn === 'user_id') return { data: null, error };
         console.warn(`robustInsert: Column '${missingColumn}' not found in table '${table}'. Retrying without it.`);
         return robustInsert(table, dbRow, [...excludedColumns, missingColumn]);
       }
@@ -476,19 +503,24 @@ async function robustInsert(table: string, dbRow: any, excludedColumns: string[]
   }
 }
 
-async function robustUpdate(table: string, dbRow: any, eqKey: string, eqVal: any, excludedColumns: string[] = []): Promise<{ data: any, error: any }> {
+async function robustUpdate(table: string, dbRow: any, eqKey: string, eqVal: any, excludedColumns: string[] = [], extraFilters: { column: string; value: any }[] = []): Promise<{ data: any, error: any }> {
   const rowToUpdate = { ...dbRow };
   excludedColumns.forEach(col => delete rowToUpdate[col]);
 
   try {
-    const { data, error } = await supabase.from(table).update(rowToUpdate).eq(eqKey, eqVal).select();
+    let query = supabase.from(table).update(rowToUpdate).eq(eqKey, eqVal);
+    extraFilters.forEach(filter => {
+      query = query.eq(filter.column, filter.value);
+    });
+    const { data, error } = await query.select();
     
     if (error && error.code === 'PGRST204') {
       const match = error.message.match(/find the '([^']+)' column/);
       if (match && match[1]) {
         const missingColumn = match[1];
+        if (missingColumn === 'user_id') return { data: null, error };
         console.warn(`robustUpdate: Column '${missingColumn}' not found in table '${table}'. Retrying without it.`);
-        return robustUpdate(table, dbRow, eqKey, eqVal, [...excludedColumns, missingColumn]);
+        return robustUpdate(table, dbRow, eqKey, eqVal, [...excludedColumns, missingColumn], extraFilters);
       }
     }
     
@@ -510,6 +542,7 @@ async function robustUpsert(table: string, dbRow: any, excludedColumns: string[]
       const match = error.message.match(/find the '([^']+)' column/);
       if (match && match[1]) {
         const missingColumn = match[1];
+        if (missingColumn === 'user_id') return { data: null, error };
         console.warn(`robustUpsert: Column '${missingColumn}' not found in table '${table}'. Retrying without it.`);
         return robustUpsert(table, dbRow, [...excludedColumns, missingColumn]);
       }
@@ -524,6 +557,20 @@ async function robustUpsert(table: string, dbRow: any, excludedColumns: string[]
 
 export const app = express();
 app.use(express.json({ limit: "10mb" }));
+
+app.use("/api", (req, res, next) => {
+  if (req.path.startsWith("/auth/")) return next();
+
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    (req as any).user = jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    res.status(401).json({ error: "Invalid token" });
+  }
+});
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
@@ -715,8 +762,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.get("/api/products", async (req, res) => {
     try {
-      const { data, error } = await supabase.from('products').select('*');
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await supabase.from('products').select('*').eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'products', error);
       const mapped = (data || []).map(mapProduct);
       res.json(mapped);
     } catch (error: any) {
@@ -733,7 +780,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     const capCategory = category ? capitalizeText(category) : '';
     const capBrand = brand ? capitalizeText(brand) : '';
     try {
-      const duplicate = await findDuplicateProduct(capName, capCategory, capBrand);
+      const duplicate = await findDuplicateProduct(req, capName, capCategory, capBrand);
       if (duplicate) {
         await deleteCloudinaryImage(getCloudinaryPublicIdFromUrl(imageUrl));
         return res.status(409).json({
@@ -747,7 +794,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     
     const parsedSku = `${sku || ''}::${barcode || ''}::${lowInventoryThreshold !== undefined ? lowInventoryThreshold : ''}`;
 
-    const dbRow = {
+    const dbRow = withOwner(req, {
       id: id || randomUUID(),
       name: capName,
       sku: parsedSku,
@@ -756,7 +803,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       image_url: imageUrl || '',
       category_id: capCategory,
       brand_id: capBrand
-    };
+    });
 
     const { data, error } = await robustInsert('products', dbRow);
     if (error) {
@@ -764,7 +811,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       console.error("Supabase insert product error - details:", error.details);
       console.error("Supabase insert product error - hint:", error.hint);
       console.error("Supabase insert product error - code:", error.code);
-      return sendDatabaseError(res, error);
+      return sendTenantSchemaError(res, 'products', error);
     }
     
     const p = (data && data.length > 0) ? data[0] : dbRow;
@@ -776,7 +823,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   app.put("/api/products/:id", async (req, res) => {
     try {
       const { name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold } = req.body;
-      const { data: existingProduct } = await supabase.from('products').select('*').eq('id', req.params.id).single();
+      const { data: existingProduct, error: existingError } = await supabase.from('products').select('*').eq('id', req.params.id).eq('user_id', getRequestUserId(req)).single();
+      if (existingError && existingError.code !== 'PGRST116') return sendTenantSchemaError(res, 'products', existingError);
       if (!existingProduct) {
         return res.status(404).json({ error: "Product not found" });
       }
@@ -784,7 +832,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       const capName = name !== undefined ? capitalizeText(name) : existingProduct.name;
       const capCategory = category !== undefined ? capitalizeText(category) : existingProduct.category_id;
       const capBrand = brand !== undefined ? capitalizeText(brand) : existingProduct.brand_id;
-      const duplicate = await findDuplicateProduct(capName, capCategory, capBrand, req.params.id);
+      const duplicate = await findDuplicateProduct(req, capName, capCategory, capBrand, req.params.id);
       if (duplicate) {
         await deleteCloudinaryImage(getCloudinaryPublicIdFromUrl(imageUrl));
         return res.status(409).json({
@@ -805,8 +853,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       if (category !== undefined) dbRow.category_id = capCategory;
       if (brand !== undefined) dbRow.brand_id = capBrand;
 
-      const { data, error } = await robustUpdate('products', dbRow, 'id', req.params.id);
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await robustUpdate('products', dbRow, 'id', req.params.id, [], [ownerFilter(req)]);
+      if (error) return sendTenantSchemaError(res, 'products', error);
       const oldPublicId = getCloudinaryPublicIdFromUrl(existingProduct?.image_url);
       const newPublicId = getCloudinaryPublicIdFromUrl(imageUrl);
       if (imageUrl !== undefined && oldPublicId && oldPublicId !== newPublicId) {
@@ -824,9 +872,9 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.delete("/api/products/:id", async (req, res) => {
     try {
-      const { data: product } = await supabase.from('products').select('image_url').eq('id', req.params.id).single();
-      const { error } = await supabase.from('products').delete().eq('id', req.params.id);
-      if (error) return sendDatabaseError(res, error);
+      const { data: product } = await supabase.from('products').select('image_url').eq('id', req.params.id).eq('user_id', getRequestUserId(req)).single();
+      const { error } = await supabase.from('products').delete().eq('id', req.params.id).eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'products', error);
       await deleteCloudinaryImage(getCloudinaryPublicIdFromUrl(product?.image_url));
       res.json({ success: true });
     } catch (error: any) {
@@ -837,8 +885,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.get("/api/sales", async (req, res) => {
     try {
-      const { data, error } = await supabase.from('sales').select('*');
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await supabase.from('sales').select('*').eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'sales', error);
       
       const mapped = (data || []).map((s: any) => {
         const creditMatch = (s.seller_name || '').match(/\[CREDIT:([\d.]+)\]/);
@@ -872,13 +920,14 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       
       // 1. Update inventory (with negative stock protection)
       for (const item of items) {
-        const { data: product } = await supabase.from('products').select('stock').eq('id', item.productId).single();
+        const { data: product, error: productError } = await supabase.from('products').select('stock').eq('id', item.productId).eq('user_id', getRequestUserId(req)).single();
+        if (productError || !product) return res.status(400).json({ error: `Product ${item.name || item.productId} was not found in this profile.` });
         if (product) {
           const newStock = Math.max(0, product.stock - item.quantity);
           if (product.stock < item.quantity) {
             return res.status(400).json({ error: `Insufficient stock for product ${item.name || item.productId}. Available: ${product.stock}, Requested: ${item.quantity}` });
           }
-          await supabase.from('products').update({ stock: newStock }).eq('id', item.productId);
+          await supabase.from('products').update({ stock: newStock }).eq('id', item.productId).eq('user_id', getRequestUserId(req));
         }
       }
 
@@ -897,7 +946,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         name: item.name ? capitalizeText(item.name) : undefined
       })) : items;
 
-      const newSale = {
+      const newSale = withOwner(req, {
         id: saleId,
         total,
         date: new Date().toISOString(),
@@ -909,15 +958,15 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         discount_value: discountValue || undefined,
         seller_name: encodedSellerName,
         credit_deducted: finalCreditDeducted // Safe column if it exists in Postgres
-      };
+      });
 
       // 2. Insert Sale
       const { data: saleData, error: saleError } = await robustInsert('sales', newSale);
-      if (saleError) return sendDatabaseError(res, saleError);
+      if (saleError) return sendTenantSchemaError(res, 'sales', saleError);
 
       // 3. Update customer
       if (customerId) {
-        const { data: customer } = await supabase.from('customers').select('*').eq('id', customerId).single();
+        const { data: customer } = await supabase.from('customers').select('*').eq('id', customerId).eq('user_id', getRequestUserId(req)).single();
         if (customer) {
             const payments = customer.payments || [];
             
@@ -945,7 +994,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
                 total_amount: (customer.total_amount || 0) + total,
                 paid_amount: (customer.paid_amount || 0) + finalAmountPaid,
                 payments: payments
-            }).eq('id', customerId);
+            }).eq('id', customerId).eq('user_id', getRequestUserId(req));
         }
       }
     
@@ -972,15 +1021,16 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.delete("/api/sales/:id", async (req, res) => {
     try {
-      const { data: sale } = await supabase.from('sales').select('*').eq('id', req.params.id).single();
+      const { data: sale, error: saleFetchError } = await supabase.from('sales').select('*').eq('id', req.params.id).eq('user_id', getRequestUserId(req)).single();
+      if (saleFetchError && saleFetchError.code !== 'PGRST116') return sendTenantSchemaError(res, 'sales', saleFetchError);
       if (!sale) return res.status(404).json({ error: 'Not found' });
 
       // Restock
       if (sale.items) {
         for (const item of sale.items) {
-           const { data: product } = await supabase.from('products').select('stock').eq('id', item.productId).single();
+           const { data: product } = await supabase.from('products').select('stock').eq('id', item.productId).eq('user_id', getRequestUserId(req)).single();
            if (product) {
-             await supabase.from('products').update({ stock: product.stock + item.quantity }).eq('id', item.productId);
+             await supabase.from('products').update({ stock: product.stock + item.quantity }).eq('id', item.productId).eq('user_id', getRequestUserId(req));
            }
         }
       }
@@ -988,18 +1038,18 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       // Update customer stats
       const custId = sale.customer_id;
       if (custId) {
-        const { data: customer } = await supabase.from('customers').select('*').eq('id', custId).single();
+        const { data: customer } = await supabase.from('customers').select('*').eq('id', custId).eq('user_id', getRequestUserId(req)).single();
         if (customer) {
             await supabase.from('customers').update({
                 total_amount: Math.max(0, (customer.total_amount || 0) - sale.total),
                 paid_amount: Math.max(0, (customer.paid_amount || 0) - (sale.amount_paid || sale.total)),
                 payments: (customer.payments || []).filter((p: any) => !p.notes?.includes(sale.id))
-            }).eq('id', custId);
+            }).eq('id', custId).eq('user_id', getRequestUserId(req));
         }
       }
 
-      const { error } = await supabase.from('sales').delete().eq('id', req.params.id);
-      if (error) return sendDatabaseError(res, error);
+      const { error } = await supabase.from('sales').delete().eq('id', req.params.id).eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'sales', error);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Supabase sale delete failed:", error);
@@ -1009,8 +1059,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.get("/api/categories", async (req, res) => {
     try {
-      const { data, error } = await supabase.from('categories').select('*');
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await supabase.from('categories').select('*').eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'categories', error);
       res.json(data);
     } catch (error: any) {
       console.error("Supabase categories fetch failed:", error);
@@ -1024,8 +1074,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         ...req.body,
         name: req.body.name ? capitalizeText(req.body.name) : undefined,
       };
-      const { data, error } = await supabase.from('categories').insert([{ ...capitalizedData, id: randomUUID() }]).select();
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await supabase.from('categories').insert([{ ...capitalizedData, id: randomUUID(), user_id: getRequestUserId(req) }]).select();
+      if (error) return sendTenantSchemaError(res, 'categories', error);
       res.json(data[0]);
     } catch (error: any) {
       console.error("Supabase category create failed:", error);
@@ -1035,8 +1085,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.delete("/api/categories/:id", async (req, res) => {
     try {
-      const { error } = await supabase.from('categories').delete().eq('id', req.params.id);
-      if (error) return sendDatabaseError(res, error);
+      const { error } = await supabase.from('categories').delete().eq('id', req.params.id).eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'categories', error);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Supabase category delete failed:", error);
@@ -1046,8 +1096,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.get("/api/brands", async (req, res) => {
     try {
-      const { data, error } = await supabase.from('brands').select('*');
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await supabase.from('brands').select('*').eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'brands', error);
       res.json(data);
     } catch (error: any) {
       console.error("Supabase brands fetch failed:", error);
@@ -1061,8 +1111,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         ...req.body,
         name: req.body.name ? capitalizeText(req.body.name) : undefined,
       };
-      const { data, error } = await supabase.from('brands').insert([{ ...capitalizedData, id: randomUUID() }]).select();
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await supabase.from('brands').insert([{ ...capitalizedData, id: randomUUID(), user_id: getRequestUserId(req) }]).select();
+      if (error) return sendTenantSchemaError(res, 'brands', error);
       res.json(data[0]);
     } catch (error: any) {
       console.error("Supabase brand create failed:", error);
@@ -1072,8 +1122,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.delete("/api/brands/:id", async (req, res) => {
     try {
-      const { error } = await supabase.from('brands').delete().eq('id', req.params.id);
-      if (error) return sendDatabaseError(res, error);
+      const { error } = await supabase.from('brands').delete().eq('id', req.params.id).eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'brands', error);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Supabase brand delete failed:", error);
@@ -1117,8 +1167,9 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.get("/api/settings", async (req, res) => {
     try {
-      const { data, error } = await supabase.from('settings').select('*').single();
+      const { data, error } = await supabase.from('settings').select('*').eq('user_id', getRequestUserId(req)).single();
       if (error) {
+        if (error.code !== 'PGRST116') return sendTenantSchemaError(res, 'settings', error);
         // Return default if not found, or handle error
         res.json(mapSettings());
       } else {
@@ -1132,7 +1183,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.post("/api/settings", async (req, res) => {
     try {
-      const { data: existingSettings } = await supabase.from('settings').select('*').single();
+      const { data: existingSettings } = await supabase.from('settings').select('*').eq('user_id', getRequestUserId(req)).single();
       const oldPublicId = existingSettings?.profilePicturePublicId
         || existingSettings?.profile_picture_public_id
         || getCloudinaryPublicIdFromUrl(existingSettings?.profilePictureUrl || existingSettings?.profile_picture_url);
@@ -1140,8 +1191,11 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         || req.body.profile_picture_public_id
         || getCloudinaryPublicIdFromUrl(req.body.profilePictureUrl || req.body.profile_picture_url);
 
-      const { data, error } = await robustUpsert('settings', mapSettingsToDb(req.body));
-      if (error) return sendDatabaseError(res, error);
+      const settingsRow = withOwner(req, mapSettingsToDb(req.body));
+      const { data, error } = existingSettings?.id
+        ? await robustUpdate('settings', settingsRow, 'id', existingSettings.id, [], [ownerFilter(req)])
+        : await robustInsert('settings', settingsRow);
+      if (error) return sendTenantSchemaError(res, 'settings', error);
       if (oldPublicId && oldPublicId !== nextPublicId) {
         await deleteCloudinaryImage(oldPublicId);
       }
@@ -1155,8 +1209,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   // Customer APIs
   app.get("/api/customers", async (req, res) => {
     try {
-      const { data, error } = await supabase.from('customers').select('*');
-      if (error) return res.status(500).json({ error: error.message });
+      const { data, error } = await supabase.from('customers').select('*').eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'customers', error);
       const mapped = (data || []).map((c: any) => ({
         id: c.id,
         name: c.name,
@@ -1181,7 +1235,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       const capName = name ? capitalizeText(name) : '';
       const capAddress = address ? capitalizeText(address) : '';
 
-      const dbRow = {
+      const dbRow = withOwner(req, {
         id: req.body.id || randomUUID(),
         name: capName,
         phone: phone || '',
@@ -1190,14 +1244,14 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         total_amount: totalAmount || 0,
         paid_amount: paidAmount || 0,
         payments: payments || []
-      };
+      });
 
       const { data, error } = await robustInsert('customers', dbRow);
       if (error) {
         console.error("Supabase insert customer error - message:", error.message);
         console.error("Supabase insert customer error - details:", error.details);
         console.error("Supabase insert customer error - code:", error.code);
-        return sendDatabaseError(res, error);
+        return sendTenantSchemaError(res, 'customers', error);
       }
       
       const c = (data && data.length > 0) ? data[0] : dbRow;
@@ -1233,8 +1287,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       if (paidAmount !== undefined) dbRow.paid_amount = paidAmount;
       if (payments !== undefined) dbRow.payments = payments;
 
-      const { data, error } = await robustUpdate('customers', dbRow, 'id', req.params.id);
-      if (error) return sendDatabaseError(res, error);
+      const { data, error } = await robustUpdate('customers', dbRow, 'id', req.params.id, [], [ownerFilter(req)]);
+      if (error) return sendTenantSchemaError(res, 'customers', error);
       
       const c = (data && data.length > 0) ? data[0] : { ...dbRow, id: req.params.id };
       const mapped = {
@@ -1256,8 +1310,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.delete("/api/customers/:id", async (req, res) => {
     try {
-      const { error } = await supabase.from('customers').delete().eq('id', req.params.id);
-      if (error) return sendDatabaseError(res, error);
+      const { error } = await supabase.from('customers').delete().eq('id', req.params.id).eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'customers', error);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Supabase customer delete failed:", error);
@@ -1267,7 +1321,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.post("/api/customers/:id/payments", async (req, res) => {
     try {
-      const { data: customer, error: fetchError } = await supabase.from('customers').select('*').eq('id', req.params.id).single();
+      const { data: customer, error: fetchError } = await supabase.from('customers').select('*').eq('id', req.params.id).eq('user_id', getRequestUserId(req)).single();
       if (fetchError || !customer) return res.status(404).json({ error: "Customer not found" });
 
       const { amount, notes } = req.body;
@@ -1286,9 +1340,9 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         payments: payments
       };
 
-      const { data, error: updateError } = await robustUpdate('customers', updatePayload, 'id', req.params.id);
+      const { data, error: updateError } = await robustUpdate('customers', updatePayload, 'id', req.params.id, [], [ownerFilter(req)]);
 
-      if (updateError) return sendDatabaseError(res, updateError);
+      if (updateError) return sendTenantSchemaError(res, 'customers', updateError);
       
       const c = (data && data.length > 0) ? data[0] : { ...customer, ...updatePayload };
       const mapped = {
@@ -1311,9 +1365,12 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   app.post("/api/ai/ask", async (req, res) => {
     try {
       const { prompt } = req.body;
-      const { data: dbProducts } = await supabase.from('products').select('*');
-      const { data: dbSales } = await supabase.from('sales').select('*');
-      const { data: dbCustomers } = await supabase.from('customers').select('*');
+      const { data: dbProducts, error: productsError } = await supabase.from('products').select('*').eq('user_id', getRequestUserId(req));
+      const { data: dbSales, error: salesError } = await supabase.from('sales').select('*').eq('user_id', getRequestUserId(req));
+      const { data: dbCustomers, error: customersError } = await supabase.from('customers').select('*').eq('user_id', getRequestUserId(req));
+      if (productsError) return sendTenantSchemaError(res, 'products', productsError);
+      if (salesError) return sendTenantSchemaError(res, 'sales', salesError);
+      if (customersError) return sendTenantSchemaError(res, 'customers', customersError);
       const mappedProducts = (dbProducts || []).map((p: any) => {
         const [realSku, barcode, lowThresholdStr] = (p.sku || '').split('::');
         return {
@@ -1367,9 +1424,12 @@ Customers: ${JSON.stringify(mappedCustomers)}`, prompt);
     }
 
     // Retrieve active items from Supabase database
-    const { data: dbProducts } = await supabase.from('products').select('*');
-    const { data: dbSales } = await supabase.from('sales').select('*');
-    const { data: dbCustomers } = await supabase.from('customers').select('*');
+    const { data: dbProducts, error: productsError } = await supabase.from('products').select('*').eq('user_id', getRequestUserId(req));
+    const { data: dbSales, error: salesError } = await supabase.from('sales').select('*').eq('user_id', getRequestUserId(req));
+    const { data: dbCustomers, error: customersError } = await supabase.from('customers').select('*').eq('user_id', getRequestUserId(req));
+    if (productsError) return sendTenantSchemaError(res, 'products', productsError);
+    if (salesError) return sendTenantSchemaError(res, 'sales', salesError);
+    if (customersError) return sendTenantSchemaError(res, 'customers', customersError);
 
     const mappedProducts = (dbProducts || []).map((p: any) => {
       const [realSku, barcode, lowThresholdStr] = (p.sku || '').split('::');

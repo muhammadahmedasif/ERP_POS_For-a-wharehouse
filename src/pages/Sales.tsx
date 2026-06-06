@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ProductImage } from '../components/ProductImage';
-import { Search, Plus, Filter, Download, ArrowLeft, Trash2, Printer, Users, User, TrendingUp, DollarSign, Wallet, FileText, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Search, Plus, Filter, Download, ArrowLeft, Trash2, Printer, Users, User, TrendingUp, DollarSign, Wallet, FileText, CheckCircle, AlertTriangle, Sparkles } from 'lucide-react';
 import { Product } from '../types';
 
 import { useLocation, useNavigate } from 'react-router-dom';

@@ -52,15 +52,18 @@ const Dashboard = () => {
     fetch("/api/products")
       .then((res) => res.json())
       .then((data: Product[]) => {
-        setProducts(data);
-        setStats({ productsTotal: data.length });
-        setLowStockProducts(data.filter(p => p.stock <= (p.lowInventoryThreshold || settings.defaultLowInventoryThreshold || 10)));
-      });
+        const productsData = Array.isArray(data) ? data : [];
+        setProducts(productsData);
+        setStats({ productsTotal: productsData.length });
+        setLowStockProducts(productsData.filter(p => p.stock <= (p.lowInventoryThreshold || settings.defaultLowInventoryThreshold || 10)));
+      })
+      .catch((err) => console.error(err));
     fetch("/api/sales")
       .then((res) => res.json())
       .then((data) => {
-        setSales(data);
-      });
+        setSales(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => console.error(err));
     fetch("/api/customers")
       .then((res) => res.json())
       .then((data) => {

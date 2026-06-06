@@ -62,6 +62,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   user: (() => {
     try {
+      if (!localStorage.getItem("token")) return null;
       const stored = localStorage.getItem("user");
       return stored ? JSON.parse(stored) : null;
     } catch {
@@ -94,7 +95,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   logout: () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    set({ user: null });
+    set({
+      user: null,
+      products: [],
+      categories: [],
+      brands: [],
+      customers: [],
+      settings: { storeName: 'W-Distro ERP', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
+    });
   },
 
   settings: { storeName: 'W-Distro ERP', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
