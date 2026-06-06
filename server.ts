@@ -19,9 +19,24 @@ function requireEnv(name: string) {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET?.trim() || randomUUID();
-const SUPABASE_URL = requireEnv("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+let supabaseClient: ReturnType<typeof createClient> | null = null;
+
+function getSupabase() {
+  if (!supabaseClient) {
+    const supabaseUrl = requireEnv("SUPABASE_URL");
+    const supabaseServiceRoleKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+    supabaseClient = createClient(supabaseUrl, supabaseServiceRoleKey);
+  }
+
+  return supabaseClient;
+}
+
+const supabase: any = new Proxy({}, {
+  get(_target, prop) {
+    const value = (getSupabase() as any)[prop];
+    return typeof value === "function" ? value.bind(getSupabase()) : value;
+  },
+});
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -136,13 +151,14 @@ async function deleteCloudinaryImage(publicId?: string) {
 function formatDatabaseError(error: any) {
   const causeCode = error?.cause?.code || error?.code;
   const causeMessage = error?.cause?.message || error?.message || "Unknown database error";
+  const supabaseUrl = process.env.SUPABASE_URL?.trim() || "missing";
 
   if (causeCode === "ENOTFOUND" || causeMessage.includes("ENOTFOUND")) {
-    return `Supabase host cannot be resolved. Check SUPABASE_URL in .env. Current host: ${SUPABASE_URL}`;
+    return `Supabase host cannot be resolved. Check SUPABASE_URL in .env and Vercel. Current host: ${supabaseUrl}`;
   }
 
   if (causeMessage.includes("fetch failed")) {
-    return `Could not connect to Supabase. Check SUPABASE_URL in .env. Current host: ${SUPABASE_URL}`;
+    return `Could not connect to Supabase. Check SUPABASE_URL in .env and Vercel. Current host: ${supabaseUrl}`;
   }
 
   return causeMessage;
@@ -1877,7 +1893,7 @@ Strict Output Format:
         await supabase.from('products').update({ stock: finalNewStock }).eq('id', matchProduct.id).eq('user_id', getRequestUserId(req));
         
         if (proposedAction === "make_sale") {
-          const matchCustomer = findBestEntity(mappedCustomers, prompt, proposedTarget);
+          const matchCustomer: any = findBestEntity(mappedCustomers, prompt, proposedTarget);
           const totalValue = quantityNum * matchProduct.price;
           const saleId = `ORD-${Date.now().toString().slice(-4)}`;
           const saleDate = new Date().toISOString();
