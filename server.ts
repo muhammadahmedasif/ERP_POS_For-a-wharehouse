@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { v2 as cloudinary } from "cloudinary";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
@@ -635,8 +634,13 @@ async function robustUpsert(table: string, dbRow: any, excludedColumns: string[]
 export const app = express();
 app.use(express.json({ limit: "10mb" }));
 
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.use("/api", (req, res, next) => {
   if (req.path.startsWith("/auth/")) return next();
+  if (req.path === "/health") return next();
 
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ error: "Unauthorized" });
@@ -1960,6 +1964,7 @@ Strict Output Format:
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     (async () => {
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: "spa",
@@ -1972,16 +1977,14 @@ Strict Output Format:
         });
       }
     })();
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
 
-    if (!process.env.VERCEL) {
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on port ${PORT}`);
-      });
-    }
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on port ${PORT}`);
+    });
   }
