@@ -10,9 +10,11 @@ import { Button } from "../components/ui/button";
 import {
   Package,
   DollarSign,
-  ShoppingCart,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  CalendarDays,
+  Download,
+  FileText
 } from "lucide-react";
 import {
   BarChart,
@@ -22,12 +24,12 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
   PieChart,
   Pie,
   Cell
 } from "recharts";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 import { useNavigate } from "react-router-dom";
 import { Product } from "../types";
 import { useAppStore } from "../store";
@@ -38,6 +40,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   
   const [selectedMonth, setSelectedMonth] = useState("");
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [stats, setStats] = useState({
     productsTotal: 0,
   });
@@ -72,70 +75,217 @@ const Dashboard = () => {
       .catch((err) => console.error(err));
   }, []);
 
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const sixMonthStart = selectedYear === currentYear ? Math.max(0, currentMonth - 5) : 0;
+  const visibleMonths = monthNames.slice(sixMonthStart, sixMonthStart + 6);
+
   const monthlyData: Record<string, any> = {};
   
   sales.forEach(sale => {
     const d = new Date(sale.date);
+    const year = d.getFullYear();
     const month = d.toLocaleString("default", { month: "short" });
-    if (!monthlyData[month]) {
-      monthlyData[month] = { revenue: 0, productMap: {} };
+    const key = `${year}-${month}`;
+    if (!monthlyData[key]) {
+      monthlyData[key] = { revenue: 0, productMap: {}, orders: 0 };
     }
-    monthlyData[month].revenue += sale.total;
+    monthlyData[key].revenue += Number(sale.total) || 0;
+    monthlyData[key].orders += 1;
 
     sale.items?.forEach((item: any) => {
        const productName = products.find(p => p.id === item.productId)?.name || `Prod-${item.productId}`;
-       if (!monthlyData[month].productMap[productName]) {
-         monthlyData[month].productMap[productName] = 0;
+       if (!monthlyData[key].productMap[productName]) {
+         monthlyData[key].productMap[productName] = 0;
        }
-       monthlyData[month].productMap[productName] += (item.price * item.quantity);
+       monthlyData[key].productMap[productName] += ((Number(item.price) || 0) * (Number(item.quantity) || 0));
     });
   });
 
-  Object.keys(monthlyData).forEach(m => {
-    monthlyData[m].topProducts = Object.keys(monthlyData[m].productMap).map(k => ({
+  Object.keys(monthlyData).forEach(key => {
+    monthlyData[key].topProducts = Object.keys(monthlyData[key].productMap).map(k => ({
       name: k,
-      revenue: monthlyData[m].productMap[k]
+      revenue: monthlyData[key].productMap[k]
     })).sort((a,b) => b.revenue - a.revenue);
   });
 
-  const availableMonths = Object.keys(monthlyData).sort((a,b) => {
-    const d1 = new Date(`1 ${a} 2026`);
-    const d2 = new Date(`1 ${b} 2026`);
-    return d1.getTime() - d2.getTime();
-  });
+  const availableYears = Array.from(new Set([
+    currentYear,
+    ...sales.map(sale => new Date(sale.date).getFullYear()).filter(year => !Number.isNaN(year))
+  ])).sort((a, b) => b - a);
 
   useEffect(() => {
-     if (availableMonths.length > 0 && !selectedMonth) {
-       setSelectedMonth(availableMonths[availableMonths.length - 1]);
+     if (!visibleMonths.includes(selectedMonth)) {
+       setSelectedMonth(visibleMonths[visibleMonths.length - 1]);
      }
-  }, [availableMonths, selectedMonth]);
+  }, [selectedMonth, visibleMonths]);
 
-  const currentData = monthlyData[selectedMonth] || { revenue: 0, orders: 0, topProducts: [], completed: 0, processing: 0 };
+  const selectedMonthKey = `${selectedYear}-${selectedMonth}`;
+  const currentData = monthlyData[selectedMonthKey] || { revenue: 0, orders: 0, topProducts: [], completed: 0, processing: 0 };
+  const selectedMonthIndex = monthNames.indexOf(selectedMonth);
+  const now = new Date();
+  const isCurrentMonth = selectedYear === now.getFullYear() && selectedMonthIndex === now.getMonth();
+  const selectedSales = sales.filter(sale => {
+    const date = new Date(sale.date);
+    return date.getFullYear() === selectedYear && date.getMonth() === selectedMonthIndex;
+  });
+  const selectedAverageOrder = selectedSales.length > 0 ? currentData.revenue / selectedSales.length : 0;
+  const selectedUnitsSold = selectedSales.reduce((total, sale) => {
+    return total + (sale.items || []).reduce((itemTotal: number, item: any) => itemTotal + (Number(item.quantity) || 0), 0);
+  }, 0);
 
-  const monthlySalesData = availableMonths.map(m => ({
+  const monthlySalesData = visibleMonths.map(m => ({
     name: m,
-    sales: monthlyData[m].revenue
+    sales: monthlyData[`${selectedYear}-${m}`]?.revenue || 0
   }));
 
   const categoryMap: Record<string, number> = {};
-  sales.forEach(sale => {
+  selectedSales.forEach(sale => {
     sale.items?.forEach((item: any) => {
       const p = products.find(prod => prod.id === item.productId);
       const cat = p?.category || 'Other';
-      categoryMap[cat] = (categoryMap[cat] || 0) + (item.price * item.quantity);
+      categoryMap[cat] = (categoryMap[cat] || 0) + ((Number(item.price) || 0) * (Number(item.quantity) || 0));
     });
   });
   const pieData = Object.keys(categoryMap).map(k => ({ name: k, value: categoryMap[k] }));
 
   const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
+  const handleDownloadMonthlyPDF = () => {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const reportTitle = `${selectedMonth} ${selectedYear} Monthly Sales Report`;
+    const generatedAt = new Date().toLocaleString();
+    const primaryColor: [number, number, number] = [79, 70, 229];
+    const darkColor: [number, number, number] = [30, 41, 59];
+
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.rect(0, 0, 210, 28, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text(reportTitle, 14, 12);
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(`${settings.storeName || "Apex Distro ERP"} | Generated: ${generatedAt}`, 14, 19);
+
+    doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Executive Summary", 14, 40);
+
+    autoTable(doc, {
+      startY: 44,
+      margin: { left: 14, right: 14 },
+      head: [["Metric", "Value"]],
+      body: [
+        ["Total Revenue", `Rs. ${currentData.revenue.toLocaleString()}`],
+        ["Orders", `${selectedSales.length}`],
+        ["Units Sold", `${selectedUnitsSold}`],
+        ["Average Order Value", `Rs. ${Math.round(selectedAverageOrder).toLocaleString()}`],
+        ["Unique Products Sold", `${currentData.topProducts.length}`],
+      ],
+      theme: "striped",
+      headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+    });
+
+    const topProductsY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Top Selling Products", 14, topProductsY);
+    autoTable(doc, {
+      startY: topProductsY + 4,
+      margin: { left: 14, right: 14 },
+      head: [["Rank", "Product", "Revenue"]],
+      body: currentData.topProducts.length
+        ? currentData.topProducts.map((p: any, index: number) => [`#${index + 1}`, p.name, `Rs. ${Number(p.revenue || 0).toLocaleString()}`])
+        : [["-", "No products sold in this month", "-"]],
+      theme: "striped",
+      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 2: { halign: "right", fontStyle: "bold" } },
+    });
+
+    const salesY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Sales Ledger", 14, salesY);
+    autoTable(doc, {
+      startY: salesY + 4,
+      margin: { left: 14, right: 14 },
+      head: [["Order", "Date", "Items", "Paid", "Total"]],
+      body: selectedSales.length
+        ? selectedSales.map(sale => [
+            sale.id,
+            new Date(sale.date).toLocaleDateString(),
+            (sale.items || []).map((item: any) => `${item.name || item.productId} x${item.quantity}`).join(", "),
+            `Rs. ${Number(sale.amountPaid || sale.amount_paid || 0).toLocaleString()}`,
+            `Rs. ${Number(sale.total || 0).toLocaleString()}`,
+          ])
+        : [["-", "-", "No sales recorded in this month", "-", "-"]],
+      theme: "grid",
+      headStyles: { fillColor: primaryColor, textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: { 2: { cellWidth: 70 }, 3: { halign: "right" }, 4: { halign: "right", fontStyle: "bold" } },
+    });
+
+    const categoryY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("Category Revenue Breakdown", 14, categoryY);
+    autoTable(doc, {
+      startY: categoryY + 4,
+      margin: { left: 14, right: 14 },
+      head: [["Category", "Revenue Share"]],
+      body: pieData.length
+        ? pieData.map(item => [item.name, `Rs. ${Number(item.value || 0).toLocaleString()}`])
+        : [["No category revenue", "Rs. 0"]],
+      theme: "striped",
+      headStyles: { fillColor: [100, 116, 139], textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, 284, 196, 284);
+      doc.setTextColor(148, 163, 184);
+      doc.setFontSize(7);
+      doc.text(`Apex Distro ERP monthly report | Page ${i} of ${pageCount}`, 14, 289);
+    }
+
+    doc.save(`ERP_Monthly_Report_${selectedYear}_${selectedMonth}.pdf`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-xl font-bold text-slate-800">{t("dashboard")}</h2>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">{t("dashboard")}</h2>
+          <p className="text-xs font-semibold text-slate-400 mt-1">
+            Showing report data for {selectedMonth} {selectedYear}
+          </p>
+        </div>
         
-        <div className="flex items-center space-x-2 bg-white rounded-md p-1 shadow-sm border border-slate-200">
-          {Object.keys(monthlyData).map(m => (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 bg-white rounded-md px-3 py-1.5 shadow-sm border border-slate-200">
+            <CalendarDays className="w-4 h-4 text-indigo-500" />
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none"
+            >
+              {availableYears.map(year => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center gap-1 bg-white rounded-md p-1 shadow-sm border border-slate-200">
+          {visibleMonths.map(m => (
              <button 
                key={m} 
                onClick={() => setSelectedMonth(m)}
@@ -144,10 +294,15 @@ const Dashboard = () => {
                {m}
              </button>
           ))}
+          </div>
+          <Button onClick={handleDownloadMonthlyPDF} className="h-10 text-xs font-bold bg-emerald-600 hover:bg-emerald-700">
+            <Download className="w-4 h-4 mr-2" />
+            Monthly PDF
+          </Button>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className={`grid gap-6 ${isCurrentMonth ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
         <Card className="flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -179,6 +334,49 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
+        {!isCurrentMonth && (
+          <>
+            <Card className="flex flex-col">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Orders ({selectedMonth})
+                </CardTitle>
+                <FileText className="w-4 h-4 text-slate-300" />
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-slate-900 mt-2">
+                    {selectedSales.length}
+                  </div>
+                  <p className="mt-2 text-slate-500 text-xs font-bold">
+                    {selectedUnitsSold} units sold
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="flex flex-col">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Avg Order Value
+                </CardTitle>
+                <DollarSign className="w-4 h-4 text-slate-300" />
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="text-2xl font-bold text-slate-900 mt-2">
+                    Rs. {Math.round(selectedAverageOrder).toLocaleString()}
+                  </div>
+                  <p className="mt-2 text-slate-500 text-xs font-bold">
+                    Based on {selectedSales.length} orders
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {isCurrentMonth && (
         <Card className="flex flex-col">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -200,8 +398,10 @@ const Dashboard = () => {
             </Button>
           </CardContent>
         </Card>
+        )}
       </div>
 
+      {isCurrentMonth && (
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -255,6 +455,7 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>

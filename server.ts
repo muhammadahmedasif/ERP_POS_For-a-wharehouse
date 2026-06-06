@@ -684,6 +684,53 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     }
   });
 
+  app.post("/api/auth/resend-verification", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: "Email is required" });
+
+      const { data, error } = await supabase.from('users').select('id, name, email, email_verified').eq('email', email).single();
+      if (error || !data) {
+        return res.json({ success: true, message: "If that email is registered and unverified, a new verification link has been sent." });
+      }
+
+      if (data.email_verified) {
+        return res.json({ success: true, message: "This email is already verified. You can log in now." });
+      }
+
+      const verificationToken = randomBytes(32).toString('hex');
+      await supabase.from('users').update({ verification_token: verificationToken }).eq('id', data.id);
+
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        const host = req.headers['x-forwarded-host'] || req.get('host');
+        const origin = process.env.APP_URL || `${protocol}://${host}`;
+        const verifyLink = `${origin}/verify-email?token=${verificationToken}`;
+        await transporter.sendMail({
+          from: process.env.SMTP_FROM || '"Apex Distro ERP" <noreply@erp.com>',
+          to: data.email,
+          subject: "Verify Your Email Address",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; text-align: center;">
+              <h2 style="color: #4f46e5;">Verify your Apex Distro ERP email</h2>
+              <p style="color: #475569; font-size: 16px;">Hello ${data.name || "there"},</p>
+              <p style="color: #475569; font-size: 16px;">Use this new link to verify your email address.</p>
+              <div style="margin: 30px 0;">
+                <a href="${verifyLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Verify Email Address</a>
+              </div>
+              <p style="color: #94a3b8; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
+            </div>
+          `
+        });
+      }
+
+      res.json({ success: true, message: "A new verification link has been sent." });
+    } catch (e) {
+      console.error("Resend verification error:", e);
+      sendDatabaseError(res, e);
+    }
+  });
+
   app.post("/api/auth/forgot-password", async (req, res) => {
     try {
       const { email } = req.body;
@@ -1183,7 +1230,8 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.post("/api/settings", async (req, res) => {
     try {
-      const { data: existingSettings } = await supabase.from('settings').select('*').eq('user_id', getRequestUserId(req)).single();
+      const userId = getRequestUserId(req);
+      const { data: existingSettings } = await supabase.from('settings').select('*').eq('user_id', userId).single();
       const oldPublicId = existingSettings?.profilePicturePublicId
         || existingSettings?.profile_picture_public_id
         || getCloudinaryPublicIdFromUrl(existingSettings?.profilePictureUrl || existingSettings?.profile_picture_url);
@@ -1191,15 +1239,21 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         || req.body.profile_picture_public_id
         || getCloudinaryPublicIdFromUrl(req.body.profilePictureUrl || req.body.profile_picture_url);
 
-      const settingsRow = withOwner(req, mapSettingsToDb(req.body));
-      const { data, error } = existingSettings?.id
+      const settingsRow = { ...mapSettingsToDb(req.body), user_id: userId };
+      let result = existingSettings?.id
         ? await robustUpdate('settings', settingsRow, 'id', existingSettings.id, [], [ownerFilter(req)])
         : await robustInsert('settings', settingsRow);
+
+      if (result.error?.code === '23505') {
+        result = await robustUpdate('settings', settingsRow, 'user_id', userId);
+      }
+
+      const { data, error } = result;
       if (error) return sendTenantSchemaError(res, 'settings', error);
       if (oldPublicId && oldPublicId !== nextPublicId) {
         await deleteCloudinaryImage(oldPublicId);
       }
-      res.json(mapSettings(data[0]));
+      res.json(mapSettings(data?.[0] || settingsRow));
     } catch (error: any) {
       console.error("Supabase settings update failed:", error);
       sendDatabaseError(res, error);
@@ -1790,37 +1844,37 @@ Strict Output Format:
         p => p.name.toLowerCase() === proposedProduct?.toLowerCase()
       );
 
-      // 1. Case-insensitive Substring Mapping
+      // 1. Generic live inventory matching by AI product name and original prompt.
+      if (!matchProduct) {
+        matchProduct = findBestEntity(mappedProducts, prompt, proposedProduct);
+      }
+
+      // 2. Case-insensitive substring mapping for partial names/SKUs/barcodes.
       if (!matchProduct && proposedProduct) {
         const cleanProposed = proposedProduct.toLowerCase().trim();
         matchProduct = mappedProducts.find(p => {
           const dbName = p.name.toLowerCase();
-          return dbName.includes(cleanProposed) || cleanProposed.includes(dbName);
+          const dbSku = String(p.sku || '').toLowerCase();
+          const dbBarcode = String(p.barcode || '').toLowerCase();
+          return dbName.includes(cleanProposed)
+            || cleanProposed.includes(dbName)
+            || (!!dbSku && (dbSku.includes(cleanProposed) || cleanProposed.includes(dbSku)))
+            || (!!dbBarcode && (dbBarcode.includes(cleanProposed) || cleanProposed.includes(dbBarcode)));
         });
       }
 
-      // 2. Keyword fallback map for common Roman / Urdu / English transcriptions
-      if (!matchProduct && proposedProduct) {
-        const pLower = proposedProduct.toLowerCase();
-        if (pLower.includes("ketchup") || pLower.includes("kechap") || pLower.includes("کیچپ") || pLower.includes("ٹماٹر")) {
-          matchProduct = mappedProducts.find(p => p.name.toLowerCase().includes("ketchup"));
-        } else if (pLower.includes("mayo") || pLower.includes("mayonnaise") || pLower.includes("مایونیز") || pLower.includes("میو")) {
-          matchProduct = mappedProducts.find(p => p.name.toLowerCase().includes("mayonnaise"));
-        } else if (pLower.includes("oil") || pLower.includes("cooking") || pLower.includes("تیل") || pLower.includes("آئل")) {
-          matchProduct = mappedProducts.find(p => p.name.toLowerCase().includes("oil"));
-        }
-      }
-
-      // 3. Raw prompt backup scanner: in case the AI didn't successfully map the product but it's present in user prompt
+      // 3. Raw prompt backup scanner across every live product, SKU, and barcode.
       if (!matchProduct && prompt) {
         const rawPrompt = prompt.toLowerCase();
-        if (rawPrompt.includes("ketchup") || rawPrompt.includes("kechap") || rawPrompt.includes("کیچپ") || rawPrompt.includes("ٹماٹر")) {
-          matchProduct = mappedProducts.find(p => p.name.toLowerCase().includes("ketchup"));
-        } else if (rawPrompt.includes("mayo") || rawPrompt.includes("mayonnaise") || rawPrompt.includes("مایونیز") || rawPrompt.includes("میو")) {
-          matchProduct = mappedProducts.find(p => p.name.toLowerCase().includes("mayonnaise"));
-        } else if (rawPrompt.includes("oil") || rawPrompt.includes("cooking") || rawPrompt.includes("تیل") || rawPrompt.includes("آئل")) {
-          matchProduct = mappedProducts.find(p => p.name.toLowerCase().includes("oil"));
-        }
+        matchProduct = mappedProducts.find(p => {
+          const dbName = p.name.toLowerCase();
+          const dbSku = String(p.sku || '').toLowerCase();
+          const dbBarcode = String(p.barcode || '').toLowerCase();
+          return rawPrompt.includes(dbName)
+            || dbName.includes(rawPrompt)
+            || (!!dbSku && rawPrompt.includes(dbSku))
+            || (!!dbBarcode && rawPrompt.includes(dbBarcode));
+        });
       }
 
       if (!matchProduct || proposedAction === "error") {

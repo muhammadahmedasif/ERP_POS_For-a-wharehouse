@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import React, { useState } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, Loader2, RefreshCw } from "lucide-react";
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("Click the button below to verify your email address.");
+  const [email, setEmail] = useState("");
+  const [resending, setResending] = useState(false);
 
   const verifyEmail = async () => {
     if (!token) {
@@ -35,6 +37,27 @@ export default function VerifyEmail() {
     } catch (err) {
       setStatus("error");
       setMessage("An error occurred during verification.");
+    }
+  };
+
+  const resendVerification = async () => {
+    setResending(true);
+    try {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessage(data.message || "A new verification link has been sent.");
+      } else {
+        setMessage(data.error || "Could not resend verification link.");
+      }
+    } catch {
+      setMessage("Could not resend verification link. Please try again.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -71,7 +94,39 @@ export default function VerifyEmail() {
           </motion.button>
         )}
 
-        {status !== "loading" && status !== "idle" && (
+        {status === "error" && (
+          <div className="space-y-3">
+            {token && (
+              <motion.button 
+                onClick={verifyEmail}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white/70 p-3 text-sm font-bold text-indigo-700 shadow-sm hover:bg-indigo-50 transition-all cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Try Verification Again
+              </motion.button>
+            )}
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-xl border border-slate-200/60 bg-white/50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              placeholder="Enter your email"
+            />
+            <motion.button 
+              onClick={resendVerification}
+              disabled={resending || !email}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="inline-block w-full rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 p-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all cursor-pointer disabled:opacity-70"
+            >
+              {resending ? "Sending..." : "Resend Verification Link"}
+            </motion.button>
+          </div>
+        )}
+
+        {status !== "loading" && status !== "idle" && status !== "error" && (
           <Link 
             to="/login"
             className="inline-block w-full rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 p-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all"
