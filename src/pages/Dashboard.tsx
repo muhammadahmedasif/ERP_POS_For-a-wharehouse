@@ -33,6 +33,7 @@ import autoTable from "jspdf-autotable";
 import { useNavigate } from "react-router-dom";
 import { Product } from "../types";
 import { useAppStore } from "../store";
+import { motion } from "framer-motion";
 
 const Dashboard = () => {
   const settings = useAppStore(state => state.settings);
@@ -302,127 +303,155 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <div className={`grid gap-6 ${isCurrentMonth ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
-        <Card className="flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Total Sales ({selectedMonth})
-            </CardTitle>
-            <DollarSign className="w-4 h-4 text-slate-300" />
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col">
-            <div className="text-2xl font-bold text-slate-900 mt-2">
-              Rs. {currentData.revenue.toLocaleString()}
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-slate-100 flex-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2 block">Top Selling Products</span>
-              <ul className="space-y-2">
-                {currentData.topProducts.slice(0, 3).map((p: any, i: number) => (
-                  <li key={i} className="flex justify-between items-center text-xs">
-                    <span className="text-slate-600 font-medium">
-                      {i + 1}. {p.name}
-                    </span>
-                    <span className="text-emerald-600 font-bold">Rs. {p.revenue}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <Button variant="ghost" size="sm" className="w-full mt-3 text-xs text-indigo-600 font-bold bg-indigo-50 hover:bg-indigo-100" onClick={() => navigate('/top-products')}>
-              View All Revenue Details <ArrowRight className="w-3 h-3 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, staggerChildren: 0.1 }}
+        className={`grid gap-6 ${isCurrentMonth ? "md:grid-cols-2" : "md:grid-cols-3"}`}
+      >
+        <motion.div whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="flex flex-col h-full glass border-white/60 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 bg-white/40 border-b border-white/20">
+              <CardTitle className="text-xs font-bold uppercase tracking-widest text-indigo-500">
+                Total Sales ({selectedMonth})
+              </CardTitle>
+              <div className="p-2 bg-indigo-500/10 rounded-lg">
+                <DollarSign className="w-4 h-4 text-indigo-600" />
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col p-6">
+              <div className="text-3xl font-black text-slate-800 drop-shadow-sm">
+                Rs. {currentData.revenue.toLocaleString()}
+              </div>
+              
+              <div className="mt-6 pt-4 border-t border-slate-200/50 flex-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3 block">Top Selling Products</span>
+                <ul className="space-y-3">
+                  {currentData.topProducts.slice(0, 3).map((p: any, i: number) => (
+                    <li key={i} className="flex justify-between items-center text-xs group">
+                      <span className="text-slate-600 font-semibold group-hover:text-indigo-600 transition-colors">
+                        <span className="text-slate-400 mr-1">{i + 1}.</span> {p.name}
+                      </span>
+                      <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded-md">Rs. {p.revenue}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Button variant="ghost" size="sm" className="w-full mt-4 text-xs text-indigo-600 font-bold bg-indigo-50/50 hover:bg-indigo-100/80 rounded-xl" onClick={() => navigate('/top-products')}>
+                View All Revenue Details <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
 
         {!isCurrentMonth && (
           <>
-            <Card className="flex flex-col">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Orders ({selectedMonth})
-                </CardTitle>
-                <FileText className="w-4 h-4 text-slate-300" />
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-between">
-                <div>
-                  <div className="text-2xl font-bold text-slate-900 mt-2">
+            <motion.div whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300 }}>
+              <Card className="flex flex-col h-full glass border-white/60 shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between pb-2 bg-white/40 border-b border-white/20">
+                  <CardTitle className="text-xs font-bold uppercase tracking-widest text-sky-500">
+                    Orders ({selectedMonth})
+                  </CardTitle>
+                  <div className="p-2 bg-sky-500/10 rounded-lg">
+                    <FileText className="w-4 h-4 text-sky-600" />
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 flex flex-col justify-center p-6">
+                  <div className="text-3xl font-black text-slate-800 drop-shadow-sm">
                     {selectedSales.length}
                   </div>
-                  <p className="mt-2 text-slate-500 text-xs font-bold">
-                    {selectedUnitsSold} units sold
+                  <p className="mt-2 text-slate-500 text-xs font-bold flex items-center">
+                    <Package className="w-3 h-3 mr-1" /> {selectedUnitsSold} units sold
                   </p>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </motion.div>
 
-            <Card className="flex flex-col">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Avg Order Value
-                </CardTitle>
-                <DollarSign className="w-4 h-4 text-slate-300" />
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-between">
-                <div>
-                  <div className="text-2xl font-bold text-slate-900 mt-2">
+            <motion.div whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300 }}>
+              <Card className="flex flex-col h-full glass border-white/60 shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between pb-2 bg-white/40 border-b border-white/20">
+                  <CardTitle className="text-xs font-bold uppercase tracking-widest text-emerald-500">
+                    Avg Order Value
+                  </CardTitle>
+                  <div className="p-2 bg-emerald-500/10 rounded-lg">
+                    <DollarSign className="w-4 h-4 text-emerald-600" />
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 flex flex-col justify-center p-6">
+                  <div className="text-3xl font-black text-slate-800 drop-shadow-sm">
                     Rs. {Math.round(selectedAverageOrder).toLocaleString()}
                   </div>
                   <p className="mt-2 text-slate-500 text-xs font-bold">
                     Based on {selectedSales.length} orders
                   </p>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </motion.div>
           </>
         )}
 
         {isCurrentMonth && (
-        <Card className="flex flex-col">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Total Products
-            </CardTitle>
-            <Package className="w-4 h-4 text-slate-300" />
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col justify-between">
-            <div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">
-                {stats.productsTotal}
+        <motion.div whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="flex flex-col h-full glass border-white/60 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 bg-white/40 border-b border-white/20">
+              <CardTitle className="text-xs font-bold uppercase tracking-widest text-purple-500">
+                Total Products
+              </CardTitle>
+              <div className="p-2 bg-purple-500/10 rounded-lg">
+                <Package className="w-4 h-4 text-purple-600" />
               </div>
-              <p className="mt-2 text-red-500 flex items-center text-xs font-bold">
-                {lowStockProducts.length} low stock items
-              </p>
-            </div>
-            <Button variant="outline" className="w-full mt-4 text-xs font-bold" onClick={() => navigate('/inventory')}>
-              Manage Inventory <ArrowRight className="w-3 h-3 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col justify-between p-6">
+              <div>
+                <div className="text-3xl font-black text-slate-800 drop-shadow-sm">
+                  {stats.productsTotal}
+                </div>
+                <p className="mt-3 flex items-center text-xs font-bold text-rose-500 bg-rose-50 px-3 py-1.5 rounded-md inline-flex">
+                  <AlertCircle className="w-3 h-3 mr-1.5" /> {lowStockProducts.length} low stock items
+                </p>
+              </div>
+              <Button variant="outline" className="w-full mt-6 text-xs font-bold rounded-xl border-slate-200 hover:bg-slate-50 hover:text-indigo-600" onClick={() => navigate('/inventory')}>
+                Manage Inventory <ArrowRight className="w-3 h-3 ml-1" />
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
         )}
-      </div>
+      </motion.div>
 
       {isCurrentMonth && (
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-bold text-slate-800">{t("sales_trend")}</CardTitle>
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="grid gap-6 md:grid-cols-2"
+      >
+        <Card className="glass border-white/60 shadow-sm overflow-hidden">
+          <CardHeader className="bg-white/40 border-b border-white/20">
+            <CardTitle className="text-sm font-black text-slate-800">{t("sales_trend")}</CardTitle>
           </CardHeader>
-          <CardContent className="h-[300px]">
+          <CardContent className="h-[300px] p-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlySalesData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748B", fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748B", fontSize: 12 }} />
-                <RechartsTooltip cursor={{ fill: "#F1F5F9" }} contentStyle={{ borderRadius: "8px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
-                <Bar dataKey="sales" fill="#4F46E5" radius={[4, 4, 0, 0]} />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748B", fontSize: 12, fontWeight: 600 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748B", fontSize: 12, fontWeight: 600 }} />
+                <RechartsTooltip cursor={{ fill: "#F1F5F9", opacity: 0.5 }} contentStyle={{ borderRadius: "12px", border: "1px solid rgba(255,255,255,0.5)", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)", background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }} />
+                <Bar dataKey="sales" fill="url(#colorSales)" radius={[6, 6, 0, 0]} />
+                <defs>
+                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.9}/>
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.9}/>
+                  </linearGradient>
+                </defs>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-bold text-slate-800">Sales by Category</CardTitle>
+        <Card className="glass border-white/60 shadow-sm overflow-hidden">
+          <CardHeader className="bg-white/40 border-b border-white/20">
+            <CardTitle className="text-sm font-black text-slate-800">Sales by Category</CardTitle>
           </CardHeader>
           <CardContent className="h-[300px] flex items-center justify-center">
             {pieData.length > 0 && pieData.reduce((acc, x) => acc + (x.value || 0), 0) > 0 ? (
@@ -432,97 +461,108 @@ const Dashboard = () => {
                     data={pieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={50}
-                    outerRadius={70}
-                    fill="#8884d8"
+                    innerRadius={60}
+                    outerRadius={80}
                     paddingAngle={5}
                     dataKey="value"
                     label={({name, percent}) => {
                       const valPercent = percent && !isNaN(percent) ? (percent * 100).toFixed(0) : "0";
                       return `${name} ${valPercent}%`;
                     }}
+                    labelLine={false}
                   >
                     {pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="rgba(255,255,255,0.5)" strokeWidth={2} />
                     ))}
                   </Pie>
-                  <RechartsTooltip contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+                  <RechartsTooltip contentStyle={{ borderRadius: "12px", border: "1px solid rgba(255,255,255,0.5)", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)", background: "rgba(255,255,255,0.9)", backdropFilter: "blur(8px)" }} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-slate-400 text-xs py-10 text-center">No sales registered yet to display category breakdown.</div>
+              <div className="text-slate-400 font-medium text-sm py-10 text-center">No sales registered yet to display category breakdown.</div>
             )}
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center text-sm font-bold uppercase tracking-wider text-red-605 text-red-650 text-red-600">
-              <AlertCircle className="w-4 h-4 mr-2" /> Low Stock Alerts
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+        className="grid gap-6 md:grid-cols-2"
+      >
+        <Card className="glass border-white/60 shadow-sm overflow-hidden">
+          <CardHeader className="bg-white/40 border-b border-white/20">
+            <CardTitle className="flex items-center text-sm font-black uppercase tracking-widest text-rose-600">
+              <div className="p-1.5 bg-rose-100 rounded-md mr-2">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              Low Stock Alerts
             </CardTitle>
           </CardHeader>
-          <CardContent className="max-h-[350px] overflow-y-auto">
+          <CardContent className="max-h-[350px] overflow-y-auto p-4 custom-scrollbar">
             {lowStockProducts.length === 0 ? (
-              <div className="text-center py-6 text-slate-400 text-sm">All products are well stocked.</div>
+              <div className="text-center py-8 text-slate-400 font-medium text-sm">All products are well stocked.</div>
             ) : (
               <ul className="space-y-3">
                 {lowStockProducts.map(p => (
-                   <li key={p.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                   <motion.li whileHover={{ scale: 1.02 }} key={p.id} className="flex justify-between items-center bg-white/50 backdrop-blur-md p-3 rounded-xl border border-white/60 shadow-sm transition-all">
                      <div>
-                       <div className="font-bold text-slate-800 text-xs">{p.name}</div>
-                       <div className="text-[10px] font-mono text-slate-500">{p.sku}</div>
+                       <div className="font-bold text-slate-800 text-sm">{p.name}</div>
+                       <div className="text-[10px] font-mono text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded inline-block mt-1">{p.sku}</div>
                      </div>
                      <div className="text-right">
-                       <span className="text-red-600 font-bold text-xs bg-red-50 px-2 py-0.5 rounded">Stock: {p.stock}</span>
+                       <span className="text-rose-600 font-bold text-xs bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg shadow-sm">Stock: {p.stock}</span>
                      </div>
-                   </li>
+                   </motion.li>
                 ))}
               </ul>
             )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center text-sm font-bold uppercase tracking-wider text-amber-600">
-              <AlertCircle className="w-4 h-4 mr-2" /> Pending Customer Payments
+        <Card className="glass border-white/60 shadow-sm overflow-hidden">
+          <CardHeader className="bg-white/40 border-b border-white/20">
+            <CardTitle className="flex items-center text-sm font-black uppercase tracking-widest text-amber-600">
+              <div className="p-1.5 bg-amber-100 rounded-md mr-2">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              Pending Customer Payments
             </CardTitle>
           </CardHeader>
-          <CardContent className="max-h-[350px] overflow-y-auto">
+          <CardContent className="max-h-[350px] overflow-y-auto p-4 custom-scrollbar">
             {customers.filter(c => (c.totalAmount - c.paidAmount) > 0).length === 0 ? (
-              <div className="text-center py-6 text-slate-400 text-sm">No pending payments.</div>
+              <div className="text-center py-8 text-slate-400 font-medium text-sm">No pending payments.</div>
             ) : (
               <ul className="space-y-3">
                 {customers.filter(c => (c.totalAmount - c.paidAmount) > 0).map(c => {
                   const dues = c.totalAmount - c.paidAmount;
                   return (
-                    <li key={c.id} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <motion.li whileHover={{ scale: 1.02 }} key={c.id} className="flex justify-between items-center bg-white/50 backdrop-blur-md p-3 rounded-xl border border-white/60 shadow-sm transition-all">
                       <div>
-                        <div className="font-bold text-slate-800 text-xs">{c.name}</div>
-                        <div className="text-[10px] font-mono text-slate-500">{c.phone || "No Contact"}</div>
+                        <div className="font-bold text-slate-800 text-sm">{c.name}</div>
+                        <div className="text-[10px] font-mono text-slate-500 font-medium mt-1">{c.phone || "No Contact"}</div>
                       </div>
                       <div className="text-right flex items-center gap-2">
-                        <span className="text-amber-700 font-bold text-xs bg-amber-50 px-2 py-0.5 rounded">Rs. {dues.toLocaleString()}</span>
+                        <span className="text-amber-700 font-bold text-xs bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-lg shadow-sm">Rs. {dues.toLocaleString()}</span>
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="h-7 px-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
+                          className="h-7 px-3 rounded-lg text-[10px] font-bold text-indigo-600 bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-100/50"
                           onClick={() => navigate(`/customers`)}
                         >
-                          View Details
+                          View
                         </Button>
                       </div>
-                    </li>
+                    </motion.li>
                   );
                 })}
               </ul>
             )}
           </CardContent>
         </Card>
-      </div>
+      </motion.div>
     </div>
   );
 };

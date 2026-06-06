@@ -125,13 +125,6 @@ function mapSettings(settings: any = {}) {
 function mapSettingsToDb(settings: any = {}) {
   const mapped = mapSettings(settings);
   return {
-    billPrinter: mapped.billPrinter,
-    storeName: mapped.storeName,
-    taxRate: mapped.taxRate,
-    sellerName: mapped.sellerName,
-    profilePictureUrl: mapped.profilePictureUrl,
-    profilePicturePublicId: mapped.profilePicturePublicId,
-    defaultLowInventoryThreshold: mapped.defaultLowInventoryThreshold,
     bill_printer: mapped.billPrinter,
     store_name: mapped.storeName,
     tax_rate: mapped.taxRate,

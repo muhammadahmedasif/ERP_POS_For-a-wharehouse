@@ -22,6 +22,7 @@ import {
 import { useAppStore } from "./store";
 import { AUTH_INVALID_EVENT } from "./lib/authStorage";
 import { cn } from "./lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import Categories from "./pages/Categories";
@@ -50,7 +51,7 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   const location = useLocation();
 
   const menuItems = [
-    { name: "Home", icon: LayoutDashboard, path: "/" },
+    { name: "Dashboard", icon: LayoutDashboard, path: "/" },
     { name: t("inventory"), icon: Package, path: "/inventory" },
     { name: "Categories", icon: Tag, path: "/categories" },
     { name: "Brands", icon: Bookmark, path: "/brands" },
@@ -67,43 +68,57 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   return (
     <>
       {/* Backdrop for mobile */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 lg:hidden font-sans"
-          onClick={onClose}
-        />
-      )}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden"
+            onClick={onClose}
+          />
+        )}
+      </AnimatePresence>
 
       <aside
         className={cn(
-          "bg-slate-950 text-slate-300 flex flex-col shrink-0 h-screen font-sans border-r border-slate-800 transition-transform duration-250 z-50 shadow-2xl shadow-slate-950/20",
-          "fixed inset-y-0 left-0 w-64 lg:static lg:flex lg:translate-x-0",
+          "glass-dark text-slate-300 flex flex-col shrink-0 h-screen lg:h-[calc(100vh-32px)] lg:m-4 lg:rounded-2xl border-r lg:border border-white/10 transition-transform duration-300 z-50 shadow-2xl shadow-indigo-500/10",
+          "fixed inset-y-0 left-0 w-64 lg:static lg:flex lg:translate-x-0 overflow-hidden",
           isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="p-5 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center font-bold text-white text-md shadow-lg shadow-emerald-950/30">
-              <Boxes className="w-5 h-5 text-white" />
+        <div className="p-6 flex items-center justify-between border-b border-white/5 relative overflow-hidden">
+          {/* Subtle gradient glow */}
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-transparent pointer-events-none" />
+          
+          <div className="flex items-center gap-3 relative z-10">
+            {/* Vector SVG Aura mark */}
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-gradient-to-br from-indigo-500/30 to-purple-500/30 border border-white/20 shadow-lg shadow-indigo-500/10">
+              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6">
+                <path d="M30 40C30 34.4772 34.4772 30 40 30H70V50C70 61.0457 61.0457 70 50 70H30V40Z" fill="url(#sideGrad)" opacity="0.9" />
+                <path d="M70 60C70 65.5228 65.5228 70 60 70H30V50C30 38.9543 38.9543 30 50 30H70V60Z" fill="white" opacity="0.3" />
+                <circle cx="50" cy="50" r="10" fill="white" opacity="0.8" />
+                <defs><linearGradient id="sideGrad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#a78bfa" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs>
+              </svg>
             </div>
             <div>
-              <h1 className="text-white font-extrabold text-base leading-none tracking-tight">
-                StockPilot
+              <h1 className="text-white font-extrabold text-lg leading-none tracking-tight">
+                Aura
               </h1>
-              <p className="text-[10px] text-emerald-300 uppercase tracking-wider font-extrabold mt-1">
-                Sales & Inventory
+              <p className="text-[9px] text-indigo-400/80 font-bold uppercase tracking-[0.2em] mt-1">
+                Workspace
               </p>
             </div>
           </div>
-          {/* Close button for mobile sidebar */}
           <button
             onClick={onClose}
-            className="lg:hidden text-slate-400 hover:text-white transition-colors"
+            className="lg:hidden text-slate-400 hover:text-white transition-colors relative z-10 p-1.5 bg-white/5 rounded-lg hover:bg-white/10"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <nav className="flex-1 p-3.5 space-y-0.5 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
             const isNewSale = item.path === "/sales/new";
@@ -114,15 +129,24 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
                 to={item.path}
                 onClick={onClose}
                 className={cn(
-                  "rounded-lg px-3 py-2.5 flex items-center gap-2.5 transition-all text-[13px] font-semibold",
+                  "rounded-xl px-3 py-3 flex items-center gap-3 transition-all duration-300 text-[14px] font-medium group relative overflow-hidden",
                   isNewSale
-                    ? "my-2 bg-emerald-500 text-white shadow-lg shadow-emerald-950/30 hover:bg-emerald-400 font-extrabold text-sm"
+                    ? "my-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 font-bold"
                     : isActive
-                      ? "bg-white text-slate-950 shadow-sm"
-                      : "hover:bg-slate-800 text-slate-300 hover:text-white",
+                      ? "bg-white/10 text-white shadow-sm border border-white/10 font-semibold"
+                      : "hover:bg-white/5 text-slate-400 hover:text-white",
                 )}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                {isActive && !isNewSale && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-r-full"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                  />
+                )}
+                <Icon className={cn("w-5 h-5 shrink-0 transition-transform duration-300", isActive ? "scale-110 text-indigo-400" : "group-hover:scale-110", isNewSale && "text-white")} />
                 <span>{item.name}</span>
               </Link>
             );
@@ -140,13 +164,13 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
   const getPageTitle = () => {
     switch (location.pathname) {
       case "/":
-        return "Home";
+        return "Dashboard";
       case "/inventory":
         return "Inventory";
       case "/categories":
-        return "Product Categories";
+        return "Categories";
       case "/brands":
-        return "Brand Management";
+        return "Brands";
       case "/customers":
         return "Customers";
       case "/sales":
@@ -164,71 +188,75 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
       case "/help":
         return "Help";
       default:
-        return "StockPilot";
+        return "Aura";
     }
   };
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white/85 backdrop-blur-xl border-b border-slate-200/70 flex items-center justify-between px-4 sm:px-8 shrink-0 shadow-sm shadow-slate-200/50">
+    <header className="sticky top-0 z-30 h-[72px] glass border-b border-white/40 flex items-center justify-between px-4 sm:px-8 shrink-0 shadow-sm shadow-slate-200/50 lg:mt-4 lg:mx-4 lg:rounded-2xl">
       <div className="flex items-center gap-4">
         {user && (
           <button
             onClick={onMenuClick}
-            className="p-2 -ml-2 rounded-md hover:bg-slate-100 text-slate-600 lg:hidden transition-colors"
+            className="p-2 -ml-2 rounded-xl hover:bg-slate-100/80 text-slate-600 lg:hidden transition-colors"
             title="Toggle Menu"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-6 h-6" />
           </button>
         )}
         {user && (
           <div className="hidden sm:flex flex-col select-none">
-            <span className="text-[9px] uppercase tracking-widest text-indigo-600 font-extrabold">
-              {settings.storeName || "StockPilot"}
+            <span className="text-[10px] uppercase tracking-widest text-indigo-600 font-bold">
+              {settings.storeName || "Aura Workspace"}
             </span>
-            <span className="text-sm font-extrabold text-slate-800 tracking-tight leading-none mt-1">
+            <span className="text-xl font-bold text-slate-800 tracking-tight leading-none mt-1">
               {getPageTitle()}
             </span>
           </div>
         )}
       </div>
-      <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2">
-          {user ? (
-            <>
-              <button 
-                onClick={() => useAppStore.getState().logout()} 
-                className="text-xs bg-white text-slate-700 border border-slate-200 px-3 py-1.5 rounded-md select-none cursor-pointer hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-all active:scale-[0.98]"
-              >
-                Logout
-              </button>
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-bold leading-none text-slate-800">
-                  {user?.name || settings.sellerName || "Admin"}
-                </p>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  {settings.storeName}
-                </p>
-              </div>
-              <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-xs font-bold text-slate-500">
-                {settings.profilePictureUrl ? (
-                  <img src={settings.profilePictureUrl} alt="Logo" className="w-full h-full rounded-full object-cover"/>
-                ) : (
-                  (user?.name || settings.sellerName || 'A').charAt(0)
-                )}
-              </div>
-            </>
-          ) : (
-              <Link to="/login" className="text-xs bg-slate-950 text-white px-3 py-1.5 rounded-md">Login</Link>
-          )}
-        </div>
+      <div className="flex items-center gap-5">
+        {user ? (
+          <>
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => useAppStore.getState().logout()} 
+              className="text-sm font-semibold bg-white/60 backdrop-blur-sm text-slate-700 border border-slate-200/50 px-4 py-2 rounded-xl select-none cursor-pointer hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-all shadow-sm"
+            >
+              Logout
+            </motion.button>
+            <div className="text-right hidden sm:block">
+              <p className="text-sm font-bold leading-none text-slate-800">
+                {user?.name || settings.sellerName || "Admin"}
+              </p>
+              <p className="text-xs text-slate-500 mt-1 font-medium">
+                {settings.storeName}
+              </p>
+            </div>
+            <motion.div 
+              whileHover={{ scale: 1.05, rotate: 5 }}
+              className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-100 overflow-hidden flex items-center justify-center text-sm font-bold text-indigo-700 shadow-sm"
+            >
+              {settings.profilePictureUrl ? (
+                <img src={settings.profilePictureUrl} alt="Logo" className="w-full h-full object-cover"/>
+              ) : (
+                (user?.name || settings.sellerName || 'A').charAt(0)
+              )}
+            </motion.div>
+          </>
+        ) : (
+            <Link to="/login" className="text-sm font-semibold bg-slate-900 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-slate-900/20 hover:shadow-slate-900/40 transition-all">Login</Link>
+        )}
       </div>
     </header>
   );
 };
 
-export default function App() {
+function AppContent() {
   const { fetchSettings, logout, user } = useAppStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const location = useLocation(); // To track routes for animations
 
   useEffect(() => {
     window.addEventListener(AUTH_INVALID_EVENT, logout);
@@ -242,42 +270,64 @@ export default function App() {
   }, [fetchSettings, user]);
 
   return (
-    <BrowserRouter>
-      <div className="flex h-[100dvh] bg-slate-50 text-slate-900 overflow-hidden font-sans relative z-0">
-        {/* Global Premium Ambient Background */}
-        <div className="absolute inset-0 pointer-events-none z-[-1] overflow-hidden">
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,#f8fafc_0%,#eef2f7_100%)]"></div>
-        </div>
-
-        <Toaster position="top-right" />
-        {user && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-transparent">
-          {user && <Navbar onMenuClick={() => setSidebarOpen(true)} />}
-          <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-8">
-            <Routes>
-              <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-              <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/" />} />
-              <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
-              <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
-              <Route path="/verify-email" element={!user ? <VerifyEmail /> : <Navigate to="/" />} />
-              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
-              <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
-              <Route path="/brands" element={<ProtectedRoute><Brands /></ProtectedRoute>} />
-              <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
-              <Route path="/sales/new" element={<ProtectedRoute><Sales initialView="new" /></ProtectedRoute>} />
-              <Route path="/top-products" element={<ProtectedRoute><TopProducts /></ProtectedRoute>} />
-              <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
-              <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              <Route path="/ai" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
-              <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
-              <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
-            </Routes>
-          </main>
-        </div>
+    <div className="flex h-[100dvh] bg-[#fcfcfc] text-slate-800 overflow-hidden font-sans relative z-0 selection:bg-indigo-500/20">
+      {/* Global Premium Ambient Background */}
+      <div className="absolute inset-0 pointer-events-none z-[-1] overflow-hidden">
+        {/* Animated glowing orbs for a dynamic premium feel */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/10 blur-[100px] animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute bottom-[-10%] right-[-5%] w-[50%] h-[50%] rounded-full bg-purple-500/10 blur-[120px] animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
       </div>
+
+      <Toaster position="top-right" toastOptions={{ className: 'glass rounded-xl shadow-xl border-white/50 font-sans' }} />
+      
+      {user && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
+      
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-transparent relative z-10">
+        {user && <Navbar onMenuClick={() => setSidebarOpen(true)} />}
+        
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-8 pt-6 relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="h-full"
+            >
+              <Routes location={location}>
+                <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/" />} />
+                <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
+                <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
+                <Route path="/verify-email" element={!user ? <VerifyEmail /> : <Navigate to="/" />} />
+                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+                <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
+                <Route path="/brands" element={<ProtectedRoute><Brands /></ProtectedRoute>} />
+                <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
+                <Route path="/sales/new" element={<ProtectedRoute><Sales initialView="new" /></ProtectedRoute>} />
+                <Route path="/top-products" element={<ProtectedRoute><TopProducts /></ProtectedRoute>} />
+                <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
+                <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                <Route path="/ai" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
+                <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
+                <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
+              </Routes>
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
     </BrowserRouter>
   );
 }

@@ -20,7 +20,7 @@ export const printReceipt = (sale: any, products: any[], settings: any = {}) => 
   const storeName = settings.storeName || 'ZAHID WHOLESALE';
   const taxRate = settings.taxRate || 0;
   
-  const subtotal = sale.items.reduce((acc: number, item: any) => acc + (item.quantity * item.price), 0);
+  const subtotal = sale.items.reduce((acc: number, item: any) => acc + (item.quantity * (item.price - (item.perPieceDiscount || 0))), 0);
 
   // Format date, day, and time dynamically and correctly
   const d = new Date(sale.date);
@@ -46,12 +46,16 @@ export const printReceipt = (sale: any, products: any[], settings: any = {}) => 
   const itemsHtml = sale.items.map((item: any) => {
     const p = products.find((prod: any) => prod.id === item.productId);
     const name = p ? p.name : `ITEM-${item.productId}`;
+    const effectivePrice = item.price - (item.perPieceDiscount || 0);
     return `
       <tr>
-        <td style="text-align: left; padding: 5px 0; font-weight: bold; border-bottom: 1px dotted #ccc;">${name}</td>
+        <td style="text-align: left; padding: 5px 0; font-weight: bold; border-bottom: 1px dotted #ccc;">
+          ${name}
+          ${item.perPieceDiscount > 0 ? `<br><span style="font-size: 9px; font-weight: normal; color: #555;">(Disc: Rs. ${item.perPieceDiscount}/pc)</span>` : ''}
+        </td>
         <td style="text-align: center; padding: 5px 0; border-bottom: 1px dotted #ccc;">${item.quantity}</td>
-        <td style="text-align: right; padding: 5px 0; border-bottom: 1px dotted #ccc;">Rs. ${item.price.toFixed(2)}</td>
-        <td style="text-align: right; padding: 5px 0; border-bottom: 1px dotted #ccc;">Rs. ${(item.quantity * item.price).toFixed(2)}</td>
+        <td style="text-align: right; padding: 5px 0; border-bottom: 1px dotted #ccc;">Rs. ${effectivePrice.toFixed(2)}</td>
+        <td style="text-align: right; padding: 5px 0; border-bottom: 1px dotted #ccc;">Rs. ${(item.quantity * effectivePrice).toFixed(2)}</td>
       </tr>
     `;
   }).join('');
