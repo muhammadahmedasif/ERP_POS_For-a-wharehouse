@@ -14,7 +14,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 function requireEnv(name: string) {
   const value = process.env[name]?.trim();
   if (!value) {
-    throw new Error(`${name} is missing in .env`);
+    throw new Error(`${name} is missing. Add it to your local .env and to Vercel Project Settings > Environment Variables.`);
   }
   return value;
 }
