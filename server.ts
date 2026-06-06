@@ -423,6 +423,83 @@ async function runSmartAssistant(prompt: string, products: any[], sales: any[], 
   return { action: 'error', product: null, quantity: 0, message_ur: 'Command samajh nahi aayi. Please product, quantity, ya report ka naam batayein.', executed: false };
 }
 
+function parseVoiceAssistantFallback(prompt: string, products: any[], sales: any[], customers: any[]) {
+  const lower = normalizeProductKey(prompt);
+  const quantity = Math.max(0, extractFirstNumber(prompt, 0));
+  const product = findBestEntity(products, prompt);
+  const customer = findBestEntity(customers, prompt);
+
+  const wantsSale = /\b(sale|sell|sold|bill|invoice|checkout|order|farokht|frokht|bech|bik|bika)\b/.test(lower);
+  const wantsAddStock = /\b(add|plus|increase|receive|received|restock|stock in|shamil|jama|daal)\b/.test(lower);
+  const wantsRemoveStock = /\b(remove|minus|decrease|deduct|nikal|kam)\b/.test(lower);
+  const wantsSetStock = /\b(set|update|make stock|rakh)\b/.test(lower);
+  const wantsStockCheck = /\b(stock|available|kitna|check|price|rate)\b/.test(lower);
+  const wantsPayment = /\b(payment|paid|pay|receive payment|clear due|advance|jama|wasool|ada)\b/.test(lower) && customer;
+  const wantsDebt = /\b(udhar|debt|khata|khaty|unpaid|credit)\b/.test(lower) && customer && !product;
+  const wantsOverview = /\b(overview|report|sales|top|selling|seller|revenue|due|dues|low stock|analytics|month|today|summary)\b/.test(lower)
+    && !wantsSale && !wantsPayment && !wantsAddStock && !wantsRemoveStock && !wantsSetStock;
+
+  if (wantsPayment) {
+    return {
+      action: 'pay_customer',
+      product: null,
+      target: customer?.name || null,
+      quantity,
+      message_ur: customer ? `${customer.name} ki payment record kar raha hoon.` : 'Customer nahi mila.'
+    };
+  }
+
+  if (wantsDebt) {
+    return {
+      action: 'add_debt',
+      product: null,
+      target: customer?.name || null,
+      quantity,
+      message_ur: customer ? `${customer.name} ke khaty mein amount add kar raha hoon.` : 'Customer nahi mila.'
+    };
+  }
+
+  if (wantsOverview || (!product && !customer)) {
+    return {
+      action: 'general_query',
+      product: null,
+      target: null,
+      quantity: 0,
+      message_ur: buildOverview(prompt, products, sales, customers)
+    };
+  }
+
+  if (!product) {
+    return {
+      action: 'error',
+      product: null,
+      target: customer?.name || null,
+      quantity: 0,
+      message_ur: 'Product inventory mein nahi mila. Please product name dobara batayein.'
+    };
+  }
+
+  const action = wantsSale
+    ? 'make_sale'
+    : wantsAddStock
+      ? 'add_stock'
+      : wantsRemoveStock
+        ? 'remove_stock'
+        : wantsSetStock
+          ? 'update_stock'
+          : wantsStockCheck
+            ? 'check_stock'
+            : 'check_stock';
+
+  return {
+    action,
+    product: product.name,
+    target: customer?.name || null,
+    quantity: action === 'check_stock' ? 0 : quantity,
+    message_ur: `${product.name} ke liye command process kar raha hoon.`
+  };
+}
+
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 function getGroqApiKey() {
@@ -1600,132 +1677,8 @@ Strict Output Format:
       parsed = await askGroqJson(systemPrompt, prompt);
     } catch (e: any) {
       console.error("Groq assistant failed:", e.message);
-      return res.status(200).json({
-        action: "error",
-        product: null,
-        target: null,
-        quantity: 0,
-        message_ur: e.message || "Groq assistant failed. Please check GROQ_API_KEY.",
-        executed: false
-      });
-    }
-
-    // Groq-only mode: local semantic fallback is intentionally disabled.
-    if (false && (fallbackUsed || !parsed)) {
-      const cleanPrompt = prompt.toLowerCase().trim();
-      let matchedProduct = null;
-      let action = "check_stock";
-      let quantity = 1;
-      let message_ur = "";
-
-      const isGeneralTopSellerQuery = cleanPrompt.includes("seller") || cleanPrompt.includes("selling") || cleanPrompt.includes("zyada bika") || cleanPrompt.includes("زیادہ") || cleanPrompt.includes("bika") || cleanPrompt.includes("faroxt");
-      const isLowStockQuery = cleanPrompt.includes("kam stock") || cleanPrompt.includes("low stock") || cleanPrompt.includes("alerts") || cleanPrompt.includes("khali");
-
-      if (isGeneralTopSellerQuery) {
-        // Calculate top selling product in the local state
-        const localStats: Record<string, number> = {};
-        mappedSales.forEach(sale => {
-          if (sale.items) {
-            sale.items.forEach(item => {
-              localStats[item.name] = (localStats[item.name] || 0) + item.quantity;
-            });
-          }
-        });
-        
-        let topName = "";
-        let topQty = 0;
-        Object.entries(localStats).forEach(([name, qty]) => {
-          if (qty > topQty) {
-            topQty = qty;
-            topName = name;
-          }
-        });
-
-        if (!topName) {
-          // If no recorded sale, return our default star product with placeholder
-          topName = "Tomato Ketchup 5L";
-          topQty = 120;
-        }
-
-        parsed = {
-          action: "general_query",
-          product: null,
-          quantity: 0,
-          message_ur: `اس وقت سب سے زیادہ بکنے والا پروڈکٹ ${topName} ہے جس کے کل ${topQty} یونٹس فروخت ہوئے ہیں۔`
-        };
-      } else if (isLowStockQuery) {
-        const lows = mappedProducts.filter(p => p.stock < 15);
-        const names = lows.map(p => p.name).join(", ");
-        parsed = {
-          action: "general_query",
-          product: null,
-          quantity: 0,
-          message_ur: lows.length > 0 
-            ? `اس وقت ${lows.length} آئٹمز کم اسٹاک میں ہیں، جن میں ${names} شامل ہیں۔`
-            : `سب خیریت ہے، اس وقت تمام پروڈکٹس کا اسٹاک بہترین سطح پر ہے۔`
-        };
-      } else {
-        // 1. Identify matched product based on keywords
-        if (cleanPrompt.includes("ketchup") || cleanPrompt.includes("kechap") || cleanPrompt.includes("کیچپ") || cleanPrompt.includes("ٹماٹر")) {
-          matchedProduct = mappedProducts.find(p => p.name.toLowerCase().includes("ketchup")) || mappedProducts[0];
-        } else if (cleanPrompt.includes("mayo") || cleanPrompt.includes("mayonnaise") || cleanPrompt.includes("مایونیز") || cleanPrompt.includes("میو")) {
-          matchedProduct = mappedProducts.find(p => p.name.toLowerCase().includes("mayonnaise")) || mappedProducts[1];
-        } else if (cleanPrompt.includes("oil") || cleanPrompt.includes("cooking") || cleanPrompt.includes("تیل") || cleanPrompt.includes("آئل") || cleanPrompt.includes("tel")) {
-          matchedProduct = mappedProducts.find(p => p.name.toLowerCase().includes("oil")) || mappedProducts[2];
-        } else {
-          // Broad substring match with database names
-          matchedProduct = mappedProducts.find(p => {
-            const dbName = p.name.toLowerCase();
-            return cleanPrompt.includes(dbName) || dbName.includes(cleanPrompt);
-          });
-        }
-
-        // 2. Identify the intent Action
-        if (cleanPrompt.includes("add") || cleanPrompt.includes("shamil") || cleanPrompt.includes("شامل") || cleanPrompt.includes("جمع") || cleanPrompt.includes("daal") || cleanPrompt.includes("ڈال") || cleanPrompt.includes("plus")) {
-          action = "add_stock";
-        } else if (cleanPrompt.includes("remove") || cleanPrompt.includes("nikal") || cleanPrompt.includes("kam") || cleanPrompt.includes("کم") || cleanPrompt.includes("منہا") || cleanPrompt.includes("minus")) {
-          action = "remove_stock";
-        } else if (cleanPrompt.includes("update") || cleanPrompt.includes("set") || cleanPrompt.includes("رکھیں") || cleanPrompt.includes("بدلیں")) {
-          action = "update_stock";
-        } else if (cleanPrompt.includes("check") || cleanPrompt.includes("kitna") || cleanPrompt.includes("کتنا") || cleanPrompt.includes("btao") || cleanPrompt.includes("دیکھیں") || cleanPrompt.includes("معلوم")) {
-          action = "check_stock";
-        }
-
-        // 3. Extract quantity digit format
-        const digitMatch = cleanPrompt.match(/\d+/);
-        if (digitMatch) {
-          quantity = parseInt(digitMatch[0], 10);
-        }
-
-        if (!matchedProduct) {
-          parsed = {
-            action: "error",
-            product: null,
-            quantity: 0,
-            message_ur: "یہ پروڈکٹ ہماری انوینٹری میں موجود نہیں ہے"
-          };
-        } else {
-          const prodName = matchedProduct.name;
-          if (action === "add_stock") {
-            message_ur = `میں نے ${quantity} ${prodName} اسٹاک میں شامل کر دیئے ہیں۔`;
-          } else if (action === "remove_stock") {
-            message_ur = `میں نے ${quantity} ${prodName} کی سیل درج کر کے اسٹاک سے نکال دیئے ہیں۔`;
-          } else if (action === "update_stock") {
-            message_ur = `میں نے ${prodName} کا نیا اسٹاک ${quantity} یونٹس سیٹ کر دیا ہے۔`;
-          } else {
-            // check stock
-            const currentStock = matchedProduct.stock;
-            message_ur = `اس وقت ${prodName} کا موجودہ اسٹاک ${currentStock} یونٹس ہے۔`;
-          }
-
-          parsed = {
-            action,
-            product: prodName,
-            quantity,
-            message_ur
-          };
-        }
-      }
+      parsed = parseVoiceAssistantFallback(prompt, mappedProducts, mappedSales, mappedCustomers);
+      fallbackUsed = true;
     }
 
     try {
@@ -1753,7 +1706,7 @@ Strict Output Format:
         }
         
         // Fetch fresh customer data from DB to avoid stale cache
-        const { data: freshCust } = await supabase.from('customers').select('*').eq('id', matchCustomer.id).single();
+        const { data: freshCust } = await supabase.from('customers').select('*').eq('id', matchCustomer.id).eq('user_id', getRequestUserId(req)).single();
         const currentPaidAmount = freshCust?.paid_amount || matchCustomer.paidAmount || 0;
         const newPaidAmount = currentPaidAmount + quantityNum;
         const aiSellerLabel = sellerName ? `AI Voice Assistant on behalf of ${sellerName}` : 'AI Voice Assistant';
@@ -1770,7 +1723,7 @@ Strict Output Format:
         await supabase.from('customers').update({ 
           paid_amount: newPaidAmount,
           payments: payments
-        }).eq('id', matchCustomer.id);
+        }).eq('id', matchCustomer.id).eq('user_id', getRequestUserId(req));
         
         return res.json({
            action: "pay_customer",
@@ -1788,7 +1741,7 @@ Strict Output Format:
         }
         
         // Fetch fresh customer data from DB to avoid stale cache issues
-        const { data: freshCust } = await supabase.from('customers').select('*').eq('id', matchCustomer.id).single();
+        const { data: freshCust } = await supabase.from('customers').select('*').eq('id', matchCustomer.id).eq('user_id', getRequestUserId(req)).single();
         const currentTotalAmount = freshCust?.total_amount || matchCustomer.totalAmount || 0;
         const newTotalAmount = currentTotalAmount + quantityNum;
         
@@ -1808,10 +1761,10 @@ Strict Output Format:
         await supabase.from('customers').update({ 
           total_amount: newTotalAmount,
           payments: payments
-        }).eq('id', matchCustomer.id);
+        }).eq('id', matchCustomer.id).eq('user_id', getRequestUserId(req));
         
         // Create a formal Sale record for tracking in Sales page
-        const newSale = {
+        const newSale = withOwner(req, {
           id: saleId,
           total: quantityNum,
           date: saleDate,
@@ -1826,7 +1779,7 @@ Strict Output Format:
           customer_id: matchCustomer.id,
           amount_paid: 0,
           seller_name: aiSellerLabel
-        };
+        });
         const { error: saleError } = await robustInsert('sales', newSale);
         if (saleError) console.error("add_debt sales insert error:", saleError);
         
@@ -1893,7 +1846,7 @@ Strict Output Format:
       
       if (proposedAction === "add_stock") {
         finalNewStock = matchProduct.stock + quantityNum;
-        await supabase.from('products').update({ stock: finalNewStock }).eq('id', matchProduct.id);
+        await supabase.from('products').update({ stock: finalNewStock }).eq('id', matchProduct.id).eq('user_id', getRequestUserId(req));
         executed = true;
       } else if (proposedAction === "remove_stock" || proposedAction === "make_sale") {
         if (quantityNum <= 0) {
@@ -1917,7 +1870,7 @@ Strict Output Format:
           });
         }
         finalNewStock = matchProduct.stock - quantityNum;
-        await supabase.from('products').update({ stock: finalNewStock }).eq('id', matchProduct.id);
+        await supabase.from('products').update({ stock: finalNewStock }).eq('id', matchProduct.id).eq('user_id', getRequestUserId(req));
         
         if (proposedAction === "make_sale") {
           const matchCustomer = findBestEntity(mappedCustomers, prompt, proposedTarget);
@@ -1933,7 +1886,7 @@ Strict Output Format:
             amountPaid = 0;
             
             // Fetch fresh customer data from DB to avoid stale cache
-            const { data: freshCust } = await supabase.from('customers').select('*').eq('id', matchCustomer.id).single();
+            const { data: freshCust } = await supabase.from('customers').select('*').eq('id', matchCustomer.id).eq('user_id', getRequestUserId(req)).single();
             const currentTotalAmount = freshCust?.total_amount || matchCustomer.totalAmount || 0;
             const newTotalAmount = currentTotalAmount + totalValue;
             
@@ -1949,10 +1902,10 @@ Strict Output Format:
             await supabase.from('customers').update({ 
               total_amount: newTotalAmount,
               payments: payments
-            }).eq('id', matchCustomer.id);
+            }).eq('id', matchCustomer.id).eq('user_id', getRequestUserId(req));
           }
 
-          const newSale = {
+          const newSale = withOwner(req, {
             id: saleId,
             total: totalValue,
             date: saleDate,
@@ -1967,7 +1920,7 @@ Strict Output Format:
             customer_id: matchCustomer?.id || null,
             amount_paid: amountPaid,
             seller_name: aiSellerLabel
-          };
+          });
           const { error: saleError } = await robustInsert('sales', newSale);
           if (saleError) console.error("make_sale sales insert error:", saleError);
         }
@@ -1975,7 +1928,7 @@ Strict Output Format:
         executed = true;
       } else if (proposedAction === "update_stock") {
         finalNewStock = quantityNum;
-        await supabase.from('products').update({ stock: finalNewStock }).eq('id', matchProduct.id);
+        await supabase.from('products').update({ stock: finalNewStock }).eq('id', matchProduct.id).eq('user_id', getRequestUserId(req));
         executed = true;
       } else if (proposedAction === "check_stock") {
         executed = true;
