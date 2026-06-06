@@ -1,6 +1,10 @@
+import { createRequire } from "module";
+
+const requireServer = createRequire(import.meta.url);
+
 export default async function handler(req: any, res: any) {
   try {
-    const { app } = await import("../server.ts");
+    const { app } = requireServer("../dist/server.cjs");
     return app(req, res);
   } catch (error: any) {
     console.error("API handler crashed:", error);

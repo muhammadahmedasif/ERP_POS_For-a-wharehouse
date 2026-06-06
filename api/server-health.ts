@@ -1,7 +1,15 @@
+import { createRequire } from "module";
+
+const requireServer = createRequire(import.meta.url);
+
 export default async function handler(_req: any, res: any) {
   try {
-    await import("../server.ts");
-    return res.status(200).json({ ok: true, serverImport: true });
+    const { app } = requireServer("../dist/server.cjs");
+    return res.status(200).json({
+      ok: true,
+      serverImport: true,
+      routesLoaded: typeof app === "function",
+    });
   } catch (error: any) {
     console.error("Server import health check failed:", error);
     return res.status(500).json({

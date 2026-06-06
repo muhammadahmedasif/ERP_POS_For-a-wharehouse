@@ -3,7 +3,12 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "dist/server.cjs"
+    },
+    "api/server-health.ts": {
+      "maxDuration": 30,
+      "includeFiles": "dist/server.cjs"
     }
   },
   "rewrites": [
