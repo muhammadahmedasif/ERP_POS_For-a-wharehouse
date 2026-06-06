@@ -2,15 +2,30 @@ import { createRequire } from "module";
 
 const requireServer = createRequire(import.meta.url);
 
-export default async function handler(req: any, res: any) {
-  try {
-    const { app } = requireServer("../dist/server.cjs");
-    return app(req, res);
-  } catch (error: any) {
-    console.error("API handler crashed:", error);
+let app: any;
+let initError: any;
+
+try {
+  const mod = requireServer("../dist/server.cjs");
+  app = mod.app;
+} catch (error) {
+  initError = error;
+  console.error("API handler crashed during initialization:", error);
+}
+
+export const config = {
+  api: {
+    bodyParser: false,
+    externalResolver: true,
+  },
+};
+
+export default function handler(req: any, res: any) {
+  if (initError) {
     return res.status(500).json({
-      error: "API handler crashed",
-      message: error?.message || "Unknown server error",
+      error: "API handler crashed during initialization",
+      message: initError?.message || String(initError),
     });
   }
+  return app(req, res);
 }

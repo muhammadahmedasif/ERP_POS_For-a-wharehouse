@@ -22,12 +22,8 @@ function getJwtSecret() {
   const secret = process.env.JWT_SECRET?.trim();
   if (secret) return secret;
 
-  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
-    throw new Error("JWT_SECRET is missing. Add a stable JWT_SECRET to Vercel Project Settings > Environment Variables.");
-  }
-
-  console.warn("JWT_SECRET is missing. Using a temporary development secret; login sessions will reset when the server restarts.");
-  return "development-only-jwt-secret";
+  console.warn("WARNING: JWT_SECRET is missing! Using a temporary fallback secret. Please add a stable JWT_SECRET to your environment variables (or Vercel Project Settings) to avoid users being logged out unexpectedly when the server restarts.");
+  return "development-only-jwt-secret-fallback-12345";
 }
 
 const JWT_SECRET = getJwtSecret();
