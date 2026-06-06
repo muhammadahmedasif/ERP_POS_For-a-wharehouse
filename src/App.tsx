@@ -20,6 +20,7 @@ import {
   Bookmark,
 } from "lucide-react";
 import { useAppStore } from "./store";
+import { AUTH_INVALID_EVENT } from "./lib/authStorage";
 import { cn } from "./lib/utils";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
@@ -105,6 +106,7 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
         <nav className="flex-1 p-3.5 space-y-0.5 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
+            const isNewSale = item.path === "/sales/new";
             const Icon = item.icon;
             return (
               <Link
@@ -113,9 +115,11 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
                 onClick={onClose}
                 className={cn(
                   "rounded-lg px-3 py-2 flex items-center gap-2.5 transition-colors text-xs font-medium",
-                  isActive
-                    ? "bg-indigo-600 text-white"
-                    : "hover:bg-slate-800 text-slate-300",
+                  isNewSale
+                    ? "my-2 bg-emerald-500 text-white shadow-md shadow-emerald-950/30 hover:bg-emerald-400 font-extrabold"
+                    : isActive
+                      ? "bg-indigo-600 text-white"
+                      : "hover:bg-slate-800 text-slate-300",
                 )}
               >
                 <Icon className="w-4 h-4 shrink-0" />
@@ -223,8 +227,13 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
 };
 
 export default function App() {
-  const { fetchSettings, user } = useAppStore();
+  const { fetchSettings, logout, user } = useAppStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+
+  useEffect(() => {
+    window.addEventListener(AUTH_INVALID_EVENT, logout);
+    return () => window.removeEventListener(AUTH_INVALID_EVENT, logout);
+  }, [logout]);
 
   useEffect(() => {
     if (user) {

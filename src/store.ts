@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { Product, Customer } from "./types";
+import { clearStoredAuth, getInitialStoredUser, setStoredAuth } from "./lib/authStorage";
 
 async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
   let res: Response;
@@ -62,10 +63,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   user: (() => {
     try {
-      if (!localStorage.getItem("token")) return null;
-      const stored = localStorage.getItem("user");
-      return stored ? JSON.parse(stored) : null;
+      return getInitialStoredUser();
     } catch {
+      clearStoredAuth();
       return null;
     }
   })(),
@@ -75,8 +75,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
+    setStoredAuth(data.token, data.user);
     set({ user: data.user });
     
     // Update sellerName in settings
@@ -93,8 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
   logout: () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    clearStoredAuth();
     set({
       user: null,
       products: [],
@@ -128,12 +126,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ categories: Array.isArray(data) ? data : [] });
   },
   addCategory: async (category) => {
+    const name = category.name?.trim();
+    if (!name) throw new Error("Category name cannot be empty");
+    if (get().categories.some((c) => c.name.trim().toLowerCase() === name.toLowerCase())) {
+      throw new Error("Category already exists");
+    }
     const newCat = await apiRequest<{ id: string; name: string }>("/api/categories", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(category),
+      body: JSON.stringify({ ...category, name }),
     });
-    set({ categories: [...get().categories, newCat] });
+    set({
+      categories: get().categories.some((c) => c.name.trim().toLowerCase() === newCat.name.trim().toLowerCase())
+        ? get().categories
+        : [...get().categories, newCat],
+    });
   },
   deleteCategory: async (id) => {
     await apiRequest(`/api/categories/${id}`, { method: "DELETE" });
@@ -144,12 +151,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ brands: Array.isArray(data) ? data : [] });
   },
   addBrand: async (brand) => {
+    const name = brand.name?.trim();
+    if (!name) throw new Error("Brand name cannot be empty");
+    if (get().brands.some((b) => b.name.trim().toLowerCase() === name.toLowerCase())) {
+      throw new Error("Brand already exists");
+    }
     const newBrand = await apiRequest<{ id: string; name: string }>("/api/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(brand),
+      body: JSON.stringify({ ...brand, name }),
     });
-    set({ brands: [...get().brands, newBrand] });
+    set({
+      brands: get().brands.some((b) => b.name.trim().toLowerCase() === newBrand.name.trim().toLowerCase())
+        ? get().brands
+        : [...get().brands, newBrand],
+    });
   },
   deleteBrand: async (id) => {
     await apiRequest(`/api/brands/${id}`, { method: "DELETE" });

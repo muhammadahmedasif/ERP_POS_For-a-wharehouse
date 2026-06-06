@@ -13,6 +13,7 @@ export default function Brands() {
   const [newBrandName, setNewBrandName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     fetchBrands();
@@ -30,12 +31,20 @@ export default function Brands() {
       return;
     }
 
+    if (brands.some((brand) => brand.name.trim().toLowerCase() === name.toLowerCase())) {
+      setError("Brand already exists");
+      return;
+    }
+
     try {
+      setIsAdding(true);
       await addBrand({ name });
       setSuccess(`Brand "${name}" added successfully!`);
       setNewBrandName("");
     } catch (err: any) {
       setError(err.message || "Failed to add brand");
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -92,9 +101,9 @@ export default function Brands() {
               {error && <div className="text-xs font-semibold text-red-600 bg-red-50 p-2 rounded">{error}</div>}
               {success && <div className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-2 rounded">{success}</div>}
 
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full" disabled={isAdding}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Brand
+                {isAdding ? "Adding..." : "Add Brand"}
               </Button>
             </form>
           </CardContent>

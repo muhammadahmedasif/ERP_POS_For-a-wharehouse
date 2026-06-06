@@ -18,7 +18,19 @@ function requireEnv(name: string) {
   return value;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET?.trim() || randomUUID();
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET?.trim();
+  if (secret) return secret;
+
+  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET is missing. Add a stable JWT_SECRET to Vercel Project Settings > Environment Variables.");
+  }
+
+  console.warn("JWT_SECRET is missing. Using a temporary development secret; login sessions will reset when the server restarts.");
+  return "development-only-jwt-secret";
+}
+
+const JWT_SECRET = getJwtSecret();
 let supabaseClient: ReturnType<typeof createClient> | null = null;
 
 function getSupabase() {
@@ -658,11 +670,17 @@ app.use("/api", (req, res, next) => {
   if (req.path.startsWith("/auth/")) return next();
   if (req.path === "/health") return next();
 
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  const authHeader = req.headers.authorization;
+  const [scheme, token] = authHeader?.split(" ") ?? [];
+  if (scheme !== "Bearer" || !token) return res.status(401).json({ error: "Unauthorized" });
 
   try {
-    (req as any).user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (typeof decoded !== "object" || !("userId" in decoded)) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+
+    (req as any).user = decoded;
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });
@@ -757,7 +775,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         return res.status(403).json({ error: "Please verify your email address before logging in. Check your inbox." });
       }
 
-      const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: "1h" });
+      const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: "7d" });
       res.json({ token, user: { id: data.id, email: data.email, name: data.name } });
     } catch (error: any) {
       console.error("Supabase login failed:", error);
@@ -1214,11 +1232,28 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.post("/api/categories", async (req, res) => {
     try {
+      const rawName = typeof req.body.name === "string" ? req.body.name.trim() : "";
+      if (!rawName) {
+        return res.status(400).json({ error: "Category name cannot be empty" });
+      }
+
+      const userId = getRequestUserId(req);
+      const { data: existingCategory, error: existingError } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('name', rawName)
+        .maybeSingle();
+      if (existingError) return sendTenantSchemaError(res, 'categories', existingError);
+      if (existingCategory) {
+        return res.status(409).json({ error: "Category already exists" });
+      }
+
       const capitalizedData = {
         ...req.body,
-        name: req.body.name ? capitalizeText(req.body.name) : undefined,
+        name: capitalizeText(rawName),
       };
-      const { data, error } = await supabase.from('categories').insert([{ ...capitalizedData, id: randomUUID(), user_id: getRequestUserId(req) }]).select();
+      const { data, error } = await supabase.from('categories').insert([{ ...capitalizedData, id: randomUUID(), user_id: userId }]).select();
       if (error) return sendTenantSchemaError(res, 'categories', error);
       res.json(data[0]);
     } catch (error: any) {
@@ -1251,11 +1286,28 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.post("/api/brands", async (req, res) => {
     try {
+      const rawName = typeof req.body.name === "string" ? req.body.name.trim() : "";
+      if (!rawName) {
+        return res.status(400).json({ error: "Brand name cannot be empty" });
+      }
+
+      const userId = getRequestUserId(req);
+      const { data: existingBrand, error: existingError } = await supabase
+        .from('brands')
+        .select('id')
+        .eq('user_id', userId)
+        .ilike('name', rawName)
+        .maybeSingle();
+      if (existingError) return sendTenantSchemaError(res, 'brands', existingError);
+      if (existingBrand) {
+        return res.status(409).json({ error: "Brand already exists" });
+      }
+
       const capitalizedData = {
         ...req.body,
-        name: req.body.name ? capitalizeText(req.body.name) : undefined,
+        name: capitalizeText(rawName),
       };
-      const { data, error } = await supabase.from('brands').insert([{ ...capitalizedData, id: randomUUID(), user_id: getRequestUserId(req) }]).select();
+      const { data, error } = await supabase.from('brands').insert([{ ...capitalizedData, id: randomUUID(), user_id: userId }]).select();
       if (error) return sendTenantSchemaError(res, 'brands', error);
       res.json(data[0]);
     } catch (error: any) {

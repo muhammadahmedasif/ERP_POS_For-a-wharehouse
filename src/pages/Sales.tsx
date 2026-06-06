@@ -411,6 +411,14 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
                       })}
                     </div>
                   )}
+                  {showSuggestions && barcodeInput.trim() && filteredProductsForSearch.length === 0 && (
+                    <div className="absolute top-full left-0 right-[100px] mt-1 bg-white border border-slate-200 rounded-md shadow-lg z-10">
+                      <div className="px-4 py-4 text-center">
+                        <p className="text-sm font-bold text-slate-700">No product found</p>
+                        <p className="text-xs text-slate-400 mt-1">Try another product name, SKU, barcode, or ID.</p>
+                      </div>
+                    </div>
+                  )}
                 </form>
               </CardContent>
             </Card>
@@ -768,12 +776,15 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
           <h2 className="text-lg font-bold text-slate-800">{t('sales')} Ledger</h2>
           <p className="text-xs text-slate-500">Track walk-in cash flow and wholesale regular customer balances.</p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <Button variant="outline" className="bg-white border hover:bg-gray-50 text-gray-800">
              <Download className="w-4 h-4 mr-2" /> Export
           </Button>
-          <Button onClick={() => navigate('/sales/new')}>
-            <Plus className="w-4 h-4 mr-2" /> New Sale
+          <Button
+            onClick={() => navigate('/sales/new')}
+            className="h-12 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-lg shadow-emerald-100"
+          >
+            <Plus className="w-5 h-5 mr-2" /> New Sale
           </Button>
         </div>
       </div>

@@ -13,6 +13,7 @@ export default function Categories() {
   const [newCatName, setNewCatName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -30,12 +31,20 @@ export default function Categories() {
       return;
     }
 
+    if (categories.some((cat) => cat.name.trim().toLowerCase() === name.toLowerCase())) {
+      setError("Category already exists");
+      return;
+    }
+
     try {
+      setIsAdding(true);
       await addCategory({ name });
       setSuccess(`Category "${name}" added successfully!`);
       setNewCatName("");
     } catch (err: any) {
       setError(err.message || "Failed to add category");
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -92,9 +101,9 @@ export default function Categories() {
               {error && <div className="text-xs font-semibold text-red-600 bg-red-50 p-2 rounded">{error}</div>}
               {success && <div className="text-xs font-semibold text-emerald-600 bg-emerald-50 p-2 rounded">{success}</div>}
 
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full" disabled={isAdding}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Category
+                {isAdding ? "Adding..." : "Add Category"}
               </Button>
             </form>
           </CardContent>

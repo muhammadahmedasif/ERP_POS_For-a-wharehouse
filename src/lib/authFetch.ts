@@ -1,10 +1,12 @@
+import { clearStoredAuth, getStoredToken } from "./authStorage";
+
 const originalFetch = window.fetch.bind(window);
 
-window.fetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
+window.fetch = async (input: RequestInfo | URL, init: RequestInit = {}) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const isApiRequest = url.startsWith("/api/") || url.includes(`${window.location.origin}/api/`);
   const isAuthRequest = url.includes("/api/auth/");
-  const token = localStorage.getItem("token");
+  const token = getStoredToken();
 
   if (!isApiRequest || isAuthRequest || !token) {
     return originalFetch(input, init);
@@ -15,5 +17,11 @@ window.fetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  return originalFetch(input, { ...init, headers });
+  const response = await originalFetch(input, { ...init, headers });
+
+  if (response.status === 401) {
+    clearStoredAuth(true);
+  }
+
+  return response;
 };
