@@ -8,6 +8,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/health",
+      "destination": "/api/health.ts"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/index.ts"
     },
