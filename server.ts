@@ -622,7 +622,6 @@ function mapOpenFactsProduct(product: any, fallbackBarcode = '', sourceHint = 'o
     brand,
     category: displayCategoryFromType(productType, categoryText),
     imageUrl: product?.image_front_url || product?.image_url || product?.selected_images?.front?.display?.en || '',
-    unitType: 'pcs',
     productType,
     locked: true,
   };
@@ -686,7 +685,6 @@ async function fetchUpcItemDbProduct(barcode: string) {
       brand,
       category: displayCategoryFromType(productType, categoryText),
       imageUrl: (item.images || [])[0] || '',
-      unitType: 'pcs',
       productType,
       locked: true,
     };
@@ -741,7 +739,6 @@ async function fetchDuckDuckGoBarcode(barcode: string) {
       brand,
       category: displayCategoryFromType(productType),
       imageUrl: '',
-      unitType: 'pcs',
       productType,
       locked: false, // allow user to edit easily since it's scraped
     };
@@ -779,7 +776,6 @@ async function comprehensiveBarcodeLookup(barcode: string) {
       brand: brandFromBarcode,
       category: 'Other / Custom',
       imageUrl: '',
-      unitType: 'pcs',
       productType: 'unknown',
       locked: false,
     };
