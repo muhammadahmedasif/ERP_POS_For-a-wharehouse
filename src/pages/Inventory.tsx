@@ -1212,6 +1212,48 @@ const Inventory = () => {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Current Stock</label>
+                  <Input
+                    type="number"
+                    value={formData.stock || ""}
+                    onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Selling Price</label>
+                  <Input
+                    type="number"
+                    value={formData.price || ""}
+                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price Optional</label>
+                  <Input
+                    type="number"
+                    value={formData.purchasePrice || ""}
+                    onChange={(e) => setFormData({ ...formData, purchasePrice: parseFloat(e.target.value) || 0 })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Low Stock Alert</label>
+                  <Input
+                    type="number"
+                    value={formData.lowInventoryThreshold || ""}
+                    onChange={(e) => setFormData({ ...formData, lowInventoryThreshold: parseInt(e.target.value) || 0 })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter className="px-6 py-4 border-t border-slate-100 bg-slate-50/50">

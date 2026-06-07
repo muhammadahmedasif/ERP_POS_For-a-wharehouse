@@ -334,7 +334,6 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
       setDiscountValue('');
       setDiscountType('fixed');
       setNewSaleCustomerType('walkin');
-      navigate('/sales');
       fetchSales();
       fetchProducts(); // Refresh stock
       fetchCustomers(); // Refresh customer balances
@@ -370,8 +369,8 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-8 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="col-span-1 lg:col-span-8 space-y-6">
             <Card>
               <CardContent className="p-6">
                 <form onSubmit={handleBarcodeSubmit} className="relative w-full">
@@ -514,7 +513,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
             </Card>
           </div>
 
-          <div className="col-span-4 space-y-6">
+          <div className="col-span-1 lg:col-span-4 space-y-6">
             <Card className="border border-slate-100 shadow-sm overflow-hidden">
               <CardContent className="p-6 space-y-6 bg-white">
                 <div className="space-y-4 pb-4 border-b border-rose-100">
@@ -652,7 +651,9 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
                             </div>
                           )}
 
-                          <div className="space-y-2 pt-2 border-t border-indigo-100/40">
+                          {netAmountDue > 0 && (
+                            <>
+                              <div className="space-y-2 pt-2 border-t border-indigo-100/40">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Payment</label>
                             <div className="grid grid-cols-2 gap-2">
                               <button
@@ -718,6 +719,8 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
                               )}
                             </div>
                           )}
+                          </>
+                        )}
 
                           <div className="flex justify-between items-center text-xs font-semibold pt-2 border-t border-indigo-100/40">
                             <span className="text-slate-500">Remaining Bill Amount:</span>
@@ -869,7 +872,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
       </div>
 
       {/* Segmented Filter Sections for Walkin and Regular Customers */}
-      <div className="flex border-b border-slate-200">
+      <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar whitespace-nowrap">
         <button
           onClick={() => setSalesTabFilter('all')}
           className={`py-3 px-6 text-xs font-bold uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 ${salesTabFilter === 'all'

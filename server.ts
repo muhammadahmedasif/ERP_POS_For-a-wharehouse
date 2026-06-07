@@ -1237,7 +1237,8 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.use("/api", (req, res, next) => {
+app.use("/api", async (req, res, next) => {
+  // Allow auth routes (login, signup, verify, etc.) and health check through without JWT
   if (req.path.startsWith("/auth/")) return next();
   if (req.path === "/health") return next();
 
@@ -1249,6 +1250,23 @@ app.use("/api", (req, res, next) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     if (typeof decoded !== "object" || !("userId" in decoded)) {
       return res.status(401).json({ error: "Invalid token" });
+    }
+
+    // Fetch live user from database to enforce paid_status and email_verified
+    const { data: dbUser, error: dbError } = await supabase.from('users').select('id, email, name, paid_status, email_verified').eq('id', (decoded as any).userId).single();
+    
+    if (dbError || !dbUser) {
+      return res.status(401).json({ error: "User account not found" });
+    }
+
+    // Block users who haven't verified their email
+    if (dbUser.email_verified === false) {
+      return res.status(403).json({ error: "Please verify your email address before using the system." });
+    }
+
+    // Block users whose paid_status is false
+    if (dbUser.paid_status === false) {
+      return res.status(403).json({ error: "Payment delayed. Contact support to restore access." });
     }
 
     (req as any).user = decoded;
@@ -1346,11 +1364,31 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         return res.status(403).json({ error: "Please verify your email address before logging in. Check your inbox." });
       }
 
+      if (data.paid_status === false) {
+        return res.status(403).json({ error: "Payment delayed. Contact support to restore access." });
+      }
+
       const token = jwt.sign({ userId: data.id, email: data.email }, JWT_SECRET, { expiresIn: "7d" });
-      res.json({ token, user: { id: data.id, email: data.email, name: data.name } });
+      res.json({ token, user: { id: data.id, email: data.email, name: data.name, paid_status: data.paid_status, email_verified: data.email_verified } });
     } catch (error: any) {
       console.error("Supabase login failed:", error);
       sendDatabaseError(res, error);
+    }
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: "Missing token" });
+      const token = authHeader.split(" ")[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const { data, error } = await supabase.from('users').select('*').eq('id', decoded.userId).single();
+      if (error || !data) return res.status(401).json({ error: "User not found" });
+      
+      res.json({ user: { id: data.id, email: data.email, name: data.name, paid_status: data.paid_status, email_verified: data.email_verified } });
+    } catch (e) {
+      res.status(401).json({ error: "Invalid token" });
     }
   });
 
@@ -2349,14 +2387,20 @@ Customers: ${JSON.stringify(mappedCustomers)}`, prompt);
       };
     });
 
-    const mappedCustomers = (dbCustomers || []).map((c: any) => ({
-      id: c.id,
-      name: c.name,
-      totalAmount: c.total_amount || 0,
-      paidAmount: c.paid_amount || 0,
-      dueAmount: (c.total_amount || 0) - (c.paid_amount || 0),
-      payments: c.payments || []
-    }));
+    const mappedCustomers = (dbCustomers || []).map((c: any) => {
+      const customerSales = mappedSales.filter(s => s.customerId === c.id);
+      const purchasedProducts = customerSales.flatMap(s => Array.isArray(s.items) ? s.items.map((i: any) => `${i.name} (${i.quantity}x)`) : []);
+      
+      return {
+        id: c.id,
+        name: c.name,
+        totalAmount: c.total_amount || 0,
+        paidAmount: c.paid_amount || 0,
+        dueAmount: (c.total_amount || 0) - (c.paid_amount || 0),
+        payments: c.payments || [],
+        purchasedHistory: purchasedProducts.join(", ")
+      };
+    });
 
     let parsed = null;
     let fallbackUsed = false;

@@ -42,7 +42,77 @@ import { FileText, Settings as SettingsIcon, Award, Menu, X, HelpCircle, Boxes }
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const user = useAppStore((state) => state.user);
-  return user ? <>{children}</> : <Login />;
+
+  useEffect(() => {
+    const isPaid = user?.paid_status !== false && user?.user_metadata?.paid_status !== false;
+    if (user && !isPaid) {
+      import("sonner").then((mod) => {
+        mod.toast.error("Payment delayed contact support", { duration: 5000 });
+      });
+    }
+  }, [user]);
+
+  // Periodic automatic profile refresh — checks DB for latest name, email, paid_status etc.
+  useEffect(() => {
+    if (!user) return;
+    
+    const checkProfile = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const res = await fetch("/api/auth/me", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            // Update live Zustand state
+            useAppStore.setState({ user: data.user });
+            // Update localStorage cache
+            localStorage.setItem("user", JSON.stringify(data.user));
+          }
+        }
+      } catch (err) {
+        // Silently ignore network failures so it doesn't bother users when offline
+      }
+    };
+
+    // Check immediately on app load
+    checkProfile();
+
+    // Re-check periodically every 24 hours (86400000 ms)
+    const interval = setInterval(checkProfile, 1000 * 60 * 60 * 24);
+    return () => clearInterval(interval);
+  }, [user?.id]);
+
+  if (!user) {
+    return <Login />;
+  }
+
+  const isPaid = user.paid_status !== false && user.user_metadata?.paid_status !== false;
+  if (!isPaid) {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-900 text-white p-4">
+        <div className="text-center space-y-4 max-w-md">
+          <div className="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⚠️</span>
+          </div>
+          <h1 className="text-2xl font-bold text-rose-500">Access Restricted</h1>
+          <p className="text-slate-400">Payment delayed contact support.</p>
+          <button 
+            onClick={() => useAppStore.getState().logout()} 
+            className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
 };
 
 const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {

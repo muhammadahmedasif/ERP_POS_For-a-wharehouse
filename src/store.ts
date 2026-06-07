@@ -23,6 +23,25 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
       : typeof data === "string" && data.trim()
         ? data
         : "Request failed";
+
+    // If backend returns 403, the user's paid_status or email_verified is false
+    // Force a full logout so they cannot continue using the system
+    if (res.status === 403) {
+      clearStoredAuth();
+      // Dynamically import to avoid circular dependency at module load time
+      import("./store").then(({ useAppStore }) => {
+        useAppStore.setState({
+          user: null,
+          products: [],
+          categories: [],
+          brands: [],
+          customers: [],
+        });
+      });
+      // Show the error message via alert so user sees it before being kicked out
+      alert(message);
+    }
+
     throw new Error(message);
   }
 

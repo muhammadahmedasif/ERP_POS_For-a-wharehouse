@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Product } from '../types';
 
 export default function TopProducts() {
@@ -68,7 +68,7 @@ export default function TopProducts() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-slate-800">Top Selling Products</h2>
-        <div className="flex items-center space-x-2 bg-white rounded-md p-1 shadow-sm border border-slate-200">
+        <div className="flex items-center space-x-2 bg-white rounded-md p-1 shadow-sm border border-slate-200 overflow-x-auto no-scrollbar whitespace-nowrap">
           {Object.keys(monthlyData).map(m => (
              <button 
                key={m} 
@@ -92,7 +92,11 @@ export default function TopProducts() {
               <XAxis type="number" tick={{fill: '#64748B', fontSize: 12}} />
               <YAxis dataKey="name" type="category" tick={{fill: '#64748B', fontSize: 12}} width={150} />
               <Tooltip cursor={{fill: '#F1F5F9'}} />
-              <Bar dataKey="revenue" fill="#4F46E5" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
+                {currentData.map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={['#4f46e5', '#7c3aed', '#c026d3', '#db2777', '#2563eb', '#059669', '#d97706', '#ea580c'][index % 8]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

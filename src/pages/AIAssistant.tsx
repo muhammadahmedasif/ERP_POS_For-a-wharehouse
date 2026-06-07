@@ -63,24 +63,8 @@ const AIAssistant = () => {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [recognitionError, setRecognitionError] = useState<string | null>(null);
 
-  // Hands-free continuous conversational loop state & refs to avoid stale React closures
-  const [isHandsFree, setIsHandsFree] = useState(true);
-  const isHandsFreeRef = useRef(true);
-  const latestInputRef = useRef("");
-  const executeCommandRef = useRef<(cmd: string) => Promise<void>>();
-
   const recognitionRef = useRef<any>(null);
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Sync Hands-free ref
-  useEffect(() => {
-    isHandsFreeRef.current = isHandsFree;
-  }, [isHandsFree]);
-
-  // Keep executeCommandRef fresh on every render to avoid stale closure under empty dependency arrays
-  useEffect(() => {
-    executeCommandRef.current = executeVoiceCommand;
-  });
 
   // Load resources
   useEffect(() => {
@@ -101,35 +85,25 @@ const AIAssistant = () => {
       };
 
       recognition.onresult = (event: any) => {
-        let interimTranscript = "";
-        let finalTranscript = "";
-
-        // Accumulate complete sentence text from the beginning of this continuous session
-        for (let i = 0; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + " ";
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-          }
-        }
-
-        const currentActiveText = (finalTranscript + interimTranscript).trim();
+        const currentActiveText = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join("");
+        
         setLiveTranscript(currentActiveText);
         setInput(currentActiveText);
-        latestInputRef.current = currentActiveText;
 
-        // Reset silence timeout on speech activity. Gives 3.5 seconds of total silence before auto-submitting
+        // Reset silence timeout on speech activity
         if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
         silenceTimeoutRef.current = setTimeout(() => {
           recognition.stop();
-        }, 3500); // Increased delay so speaker can speak relaxed is up to 3.5 seconds
+        }, 3500);
       };
 
       recognition.onerror = (event: any) => {
         console.error("Speech recognition error:", event.error);
         if (event.error === "not-allowed") {
           setRecognitionError(
-            "مائیکرو فون تک رسائی کی اجازت نہیں ہے۔ مائیکرو فون استعمال کرنے کی اجازت دیں، یا اگر آپ ایپ کو فریم کے اندر چلا رہے ہیں تو اوپر بائیں/دائیں 'Open in a new tab' بٹن پر کلک کریں تاکہ پراونڈنگ مائیکروفون مکمل طور پر فعال ہو سکے۔\n\n(Microphone access is not allowed. Please grant microphone permissions, or click the 'Open in a new tab' button to run the application in a separate window to bypass iframe microphone restrictions.)"
+            "مائیکرو فون تک رسائی کی اجازت نہیں ہے۔"
           );
         } else if (event.error !== "no-speech") {
           setRecognitionError(`مائیکرو فون کی خرابی: ${event.error}`);
@@ -140,15 +114,6 @@ const AIAssistant = () => {
       recognition.onend = () => {
         setIsListening(false);
         if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
-        
-        // Auto-send in hands-free mode
-        const textToSubmit = latestInputRef.current.trim();
-        if (isHandsFreeRef.current && textToSubmit !== "") {
-          latestInputRef.current = ""; // Reset ref early
-          if (executeCommandRef.current) {
-            executeCommandRef.current(textToSubmit);
-          }
-        }
       };
 
       recognitionRef.current = recognition;
@@ -175,13 +140,11 @@ const AIAssistant = () => {
     }
 
     if (isListening) {
-      latestInputRef.current = ""; // Clean value to prevent submission on forced abort
       recognitionRef.current.stop();
     } else {
       try {
         setLiveTranscript("");
         setInput("");
-        latestInputRef.current = "";
         recognitionRef.current.start();
       } catch (err) {
         console.error("Failed to start voice model:", err);
@@ -241,23 +204,6 @@ const AIAssistant = () => {
           }
         },
       ]);
-
-      // Automatically restart speech recognition in hands-free mode if enabled (silently, without TTS text playback)
-      if (isHandsFreeRef.current && recognitionRef.current) {
-        setTimeout(() => {
-          try {
-            if (isHandsFreeRef.current && !isListening) {
-              setLiveTranscript("");
-              setInput("");
-              latestInputRef.current = "";
-              recognitionRef.current.start();
-            }
-          } catch (e) {
-            console.error("Hands-free continuous loop mic restart failed:", e);
-          }
-        }, 1200);
-      }
-
     } catch (err) {
       const errMsg = "سرور سے رابطہ کرنے میں خامی پیش آئی ہے۔";
       setMessages((prev) => [
@@ -268,21 +214,6 @@ const AIAssistant = () => {
           text: errMsg,
         },
       ]);
-      
-      if (isHandsFreeRef.current && recognitionRef.current) {
-        setTimeout(() => {
-          try {
-            if (isHandsFreeRef.current && !isListening) {
-              setLiveTranscript("");
-              setInput("");
-              latestInputRef.current = "";
-              recognitionRef.current.start();
-            }
-          } catch (e) {
-            console.error("Hands-free continuous loop mic restart failed on error:", e);
-          }
-        }, 1200);
-      }
     } finally {
       setIsLoading(false);
     }
@@ -315,19 +246,7 @@ const AIAssistant = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Hands-Free Loop Toggle */}
-            <button
-              type="button"
-              onClick={() => setIsHandsFree(!isHandsFree)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-colors ${
-                isHandsFree 
-                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
-                  : "bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200"
-              }`}
-            >
-              <div className={`w-2 h-2 rounded-full ${isHandsFree ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-              Auto Mic
-            </button>
+            {/* Auto Mic removed per request */}
           </div>
         </div>
 
