@@ -17,8 +17,8 @@ export function DialogHeader({ children, className }: { children: React.ReactNod
   return <div className={cn("px-6 py-4 border-b border-slate-100 flex items-center justify-between", className)}>{children}</div>;
 }
 
-export function DialogTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-lg font-bold text-slate-800">{children}</h2>;
+export function DialogTitle({ children, className }: { children: React.ReactNode, className?: string }) {
+  return <h2 className={cn("text-lg font-bold text-slate-800", className)}>{children}</h2>;
 }
 
 export function DialogContent({ children, className }: { children: React.ReactNode, className?: string }) {

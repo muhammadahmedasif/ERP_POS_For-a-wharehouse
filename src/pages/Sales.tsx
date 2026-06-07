@@ -376,22 +376,27 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
               <CardContent className="p-6">
                 <form onSubmit={handleBarcodeSubmit} className="relative w-full">
                   <div className="flex gap-4">
-                    <Input
-                      ref={searchInputRef}
-                      id="barcode-input"
-                      placeholder="Search for products"
-                      value={barcodeInput}
-                      onChange={(e) => {
-                        setBarcodeInput(e.target.value);
-                        setShowSuggestions(true);
-                        setActiveSuggestionIndex(0);
-                      }}
-                      onFocus={() => setShowSuggestions(true)}
-                      onKeyDown={handleKeyDown}
-                      autoFocus
-                      className="flex-1"
-                    />
-                    <Button type="submit" className="h-11 px-5 bg-emerald-600 hover:bg-emerald-700 font-extrabold">
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-slate-400" />
+                      </div>
+                      <Input
+                        ref={searchInputRef}
+                        id="barcode-input"
+                        placeholder="Search by product name, SKU, or scan barcode to add..."
+                        value={barcodeInput}
+                        onChange={(e) => {
+                          setBarcodeInput(e.target.value);
+                          setShowSuggestions(true);
+                          setActiveSuggestionIndex(0);
+                        }}
+                        onFocus={() => setShowSuggestions(true)}
+                        onKeyDown={handleKeyDown}
+                        autoFocus
+                        className="pl-9 w-full"
+                      />
+                    </div>
+                    <Button type="submit" className="h-11 px-5 bg-emerald-600 hover:bg-emerald-700 font-extrabold shrink-0">
                       <Plus className="w-4 h-4 mr-2" />
                       Add
                     </Button>

@@ -10,6 +10,8 @@ export type Product = {
   imageUrl?: string;
   publicId?: string;
   lowInventoryThreshold?: number;
+  unitType?: string;
+  purchasePrice?: number;
 };
 
 export type CustomerPayment = {

@@ -196,31 +196,77 @@ function sendTenantSchemaError(res: express.Response, table: string, error: any)
 }
 
 function mapProduct(p: any) {
-  const [realSku, barcode, lowThresholdStr] = (p.sku || '').split('::');
+  const skuMeta = parseProductSkuMeta(p.sku);
   const imageUrl = p.image_url || '';
+  
+  // Resolve brand if it's generic/empty, using name and barcode
+  const rawBrand = p.brand_id || '';
+  const resolvedBrand = typeof resolveBrand === 'function' ? resolveBrand(rawBrand, p.name || '', skuMeta.barcode || '') : rawBrand;
+
   return {
     id: p.id,
     name: p.name,
-    sku: realSku || p.sku,
-    barcode: barcode || '',
-    lowInventoryThreshold: lowThresholdStr ? parseInt(lowThresholdStr, 10) : undefined,
+    sku: skuMeta.sku,
+    barcode: skuMeta.barcode,
+    lowInventoryThreshold: skuMeta.lowInventoryThreshold,
+    unitType: skuMeta.unitType,
+    purchasePrice: skuMeta.purchasePrice,
     stock: Number(p.stock) || 0,
     price: Number(p.price) || 0,
     imageUrl,
     publicId: getCloudinaryPublicIdFromUrl(imageUrl),
     category: p.category_id || '',
-    brand: p.brand_id || ''
+    brand: resolvedBrand
   };
 }
 
-function normalizeProductKey(value: any): string {
-  return String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+function parseProductSkuMeta(rawSku: any) {
+  const raw = String(rawSku || '');
+  const parts = raw.split('::');
+  if (parts.length === 1) {
+    return {
+      sku: raw,
+      barcode: '',
+      lowInventoryThreshold: undefined as number | undefined,
+      unitType: '',
+      purchasePrice: undefined as number | undefined,
+    };
+  }
+
+  const [sku, barcode, lowThresholdStr, unitType, purchasePriceStr] = parts;
+  const parsedLowThreshold = lowThresholdStr ? Number.parseInt(lowThresholdStr, 10) : undefined;
+  const parsedPurchasePrice = purchasePriceStr ? Number.parseFloat(purchasePriceStr) : undefined;
+
+  return {
+    sku: sku || raw,
+    barcode: barcode || '',
+    lowInventoryThreshold: Number.isFinite(parsedLowThreshold) ? parsedLowThreshold : undefined,
+    unitType: unitType || '',
+    purchasePrice: Number.isFinite(parsedPurchasePrice) ? parsedPurchasePrice : undefined,
+  };
 }
 
-function normalizeBrandKey(value: any): string {
+function buildProductSkuMeta(
+  sku: any,
+  barcode?: any,
+  lowInventoryThreshold?: any,
+  unitType?: any,
+  purchasePrice?: any,
+) {
+  return [
+    String(sku || ''),
+    String(barcode || ''),
+    lowInventoryThreshold !== undefined && lowInventoryThreshold !== null ? String(lowInventoryThreshold) : '',
+    String(unitType || ''),
+    purchasePrice !== undefined && purchasePrice !== null && purchasePrice !== '' ? String(purchasePrice) : '',
+  ].join('::');
+}
+
+function normalizeProductKey(value?: string) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeBrandKey(value?: string) {
   const normalized = normalizeProductKey(value);
   if (!normalized || normalized === 'unbranded' || normalized === 'unbranded / generic' || normalized === 'generic') {
     return 'unbranded / generic';
@@ -250,6 +296,546 @@ async function findDuplicateProduct(req: express.Request, name: any, category: a
       && normalizeProductKey(product.category_id) === normalizedCategory
       && normalizeBrandKey(product.brand_id) === normalizedBrand;
   }) || null;
+}
+
+async function findProductByBarcode(req: express.Request, barcode: any, excludeId?: string) {
+  const normalizedBarcode = normalizeProductKey(barcode);
+  if (!normalizedBarcode) return null;
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('user_id', getRequestUserId(req));
+
+  if (error) throw error;
+
+  return (data || []).find((product: any) => {
+    if (excludeId && product.id === excludeId) return false;
+    return normalizeProductKey(parseProductSkuMeta(product.sku).barcode) === normalizedBarcode;
+  }) || null;
+}
+
+// ──────────────────────────────────────────────────────────────────
+// COMPREHENSIVE BRAND RECOGNITION DATABASE
+// Maps well-known product names to their actual brand/manufacturer
+// ──────────────────────────────────────────────────────────────────
+const PRODUCT_NAME_TO_BRAND: Record<string, string> = {
+  // Beverages - Sodas & Soft Drinks
+  '7up': 'PepsiCo', '7 up': 'PepsiCo', 'seven up': 'PepsiCo', 'pepsi': 'PepsiCo', 'mountain dew': 'PepsiCo',
+  'mirinda': 'PepsiCo', 'slice': 'PepsiCo', 'sting': 'PepsiCo', 'aquafina': 'PepsiCo', 'tropicana': 'PepsiCo',
+  'lays': 'PepsiCo', 'lay\'s': 'PepsiCo', 'doritos': 'PepsiCo', 'cheetos': 'PepsiCo', 'kurkure': 'PepsiCo',
+  'coca cola': 'The Coca-Cola Company', 'coca-cola': 'The Coca-Cola Company', 'coke': 'The Coca-Cola Company',
+  'sprite': 'The Coca-Cola Company', 'fanta': 'The Coca-Cola Company', 'minute maid': 'The Coca-Cola Company',
+  'dasani': 'The Coca-Cola Company', 'powerade': 'The Coca-Cola Company', 'schweppes': 'The Coca-Cola Company',
+  'red bull': 'Red Bull', 'redbull': 'Red Bull',
+  'monster': 'Monster Energy', 'monster energy': 'Monster Energy',
+  'gatorade': 'PepsiCo',
+  // Water brands
+  'nestle pure life': 'Nestlé', 'pure life': 'Nestlé', 'perrier': 'Nestlé', 'san pellegrino': 'Nestlé',
+  'evian': 'Danone', 'volvic': 'Danone',
+  // Nestlé products
+  'nescafe': 'Nestlé', 'nescafé': 'Nestlé', 'maggi': 'Nestlé', 'kitkat': 'Nestlé', 'kit kat': 'Nestlé',
+  'milo': 'Nestlé', 'nesquik': 'Nestlé', 'nido': 'Nestlé', 'cerelac': 'Nestlé', 'lactogen': 'Nestlé',
+  'everyday': 'Nestlé', 'milkpak': 'Nestlé', 'milk pak': 'Nestlé', 'nestle': 'Nestlé',
+  // Unilever products
+  'lipton': 'Unilever', 'surf excel': 'Unilever', 'surf': 'Unilever', 'rin': 'Unilever',
+  'dove': 'Unilever', 'lux': 'Unilever', 'sunsilk': 'Unilever', 'clear': 'Unilever',
+  'pond\'s': 'Unilever', 'ponds': 'Unilever', 'vaseline': 'Unilever', 'fair & lovely': 'Unilever',
+  'glow & lovely': 'Unilever', 'closeup': 'Unilever', 'close up': 'Unilever', 'signal': 'Unilever',
+  'knorr': 'Unilever', 'hellmann\'s': 'Unilever', 'hellmanns': 'Unilever', 'axe': 'Unilever',
+  'rexona': 'Unilever', 'brylcreem': 'Unilever', 'vim': 'Unilever', 'domex': 'Unilever',
+  'lifebuoy': 'Unilever', 'comfort': 'Unilever', 'bru': 'Unilever', 'brooke bond': 'Unilever',
+  'supreme': 'Unilever', 'supreme tea': 'Unilever',
+  'tapal': 'Tapal', 'tapal danedar': 'Tapal', 'vital': 'Vital Tea',
+  // P&G products
+  'head & shoulders': 'Procter & Gamble', 'head and shoulders': 'Procter & Gamble', 'pantene': 'Procter & Gamble',
+  'safeguard': 'Procter & Gamble', 'ariel': 'Procter & Gamble', 'tide': 'Procter & Gamble',
+  'gillette': 'Procter & Gamble', 'oral-b': 'Procter & Gamble', 'oral b': 'Procter & Gamble',
+  'pampers': 'Procter & Gamble', 'always': 'Procter & Gamble', 'bounty': 'Procter & Gamble',
+  'downy': 'Procter & Gamble', 'olay': 'Procter & Gamble', 'old spice': 'Procter & Gamble',
+  'vicks': 'Procter & Gamble', 'herbal essences': 'Procter & Gamble',
+  // Colgate-Palmolive
+  'colgate': 'Colgate-Palmolive', 'palmolive': 'Colgate-Palmolive',
+  // Johnson & Johnson
+  'johnson': 'Johnson & Johnson', 'johnson\'s': 'Johnson & Johnson', 'johnsons': 'Johnson & Johnson',
+  'band-aid': 'Johnson & Johnson', 'listerine': 'Johnson & Johnson', 'neutrogena': 'Johnson & Johnson',
+  'aveeno': 'Johnson & Johnson', 'clean & clear': 'Johnson & Johnson',
+  // Reckitt
+  'dettol': 'Reckitt', 'harpic': 'Reckitt', 'mortein': 'Reckitt', 'veet': 'Reckitt',
+  'finish': 'Reckitt', 'air wick': 'Reckitt', 'durex': 'Reckitt', 'strepsils': 'Reckitt',
+  'nurofen': 'Reckitt', 'gaviscon': 'Reckitt',
+  // Henkel
+  'persil': 'Henkel', 'schwarzkopf': 'Henkel',
+  // L'Oréal
+  'loreal': 'L\'Oréal', 'l\'oreal': 'L\'Oréal', 'garnier': 'L\'Oréal', 'maybelline': 'L\'Oréal',
+  'nyx': 'L\'Oréal', 'lancome': 'L\'Oréal', 'kerastase': 'L\'Oréal',
+  // Beiersdorf
+  'nivea': 'Beiersdorf', 'eucerin': 'Beiersdorf',
+  // Mars / Snacks
+  'snickers': 'Mars', 'twix': 'Mars', 'm&m': 'Mars', 'bounty bar': 'Mars', 'milky way': 'Mars',
+  'skittles': 'Mars', 'pedigree': 'Mars', 'whiskas': 'Mars', 'uncle ben': 'Mars',
+  // Mondelez
+  'oreo': 'Mondelez', 'cadbury': 'Mondelez', 'dairy milk': 'Mondelez', 'tang': 'Mondelez',
+  'toblerone': 'Mondelez', 'ritz': 'Mondelez', 'lu': 'Mondelez', 'prince': 'Mondelez',
+  'halls': 'Mondelez', 'trident': 'Mondelez', 'chips ahoy': 'Mondelez',
+  // Ferrero
+  'nutella': 'Ferrero', 'ferrero rocher': 'Ferrero', 'kinder': 'Ferrero', 'tic tac': 'Ferrero',
+  // Kellogg's
+  'kellogg': 'Kellogg\'s', 'kelloggs': 'Kellogg\'s', 'corn flakes': 'Kellogg\'s', 'froot loops': 'Kellogg\'s',
+  'pringles': 'Kellogg\'s', 'special k': 'Kellogg\'s',
+  // Pakistani / Local brands
+  'shan': 'Shan Foods', 'national': 'National Foods', 'mehran': 'Mehran Foods',
+  'dalda': 'Dalda', 'habib': 'Habib Oil Mills', 'sufi': 'Sufi Group',
+  'olpers': 'Engro Foods', 'omore': 'Engro Foods', 'tarang': 'Engro Foods',
+  'nurpur': 'Fauji Foods', 'fauji': 'Fauji Foods',
+  'peek freans': 'EBM', 'sooper': 'EBM', 'rio': 'EBM', 'gluco': 'EBM',
+  'kolson': 'Kolson', 'shezan': 'Shezan',
+  'mitchells': 'Mitchell\'s', 'mitchell': 'Mitchell\'s',
+  'rooh afza': 'Hamdard', 'hamdard': 'Hamdard',
+  'rafhan': 'Unilever', 'energile': 'Unilever',
+  'molty foam': 'Master MoltyFoam', 'diamond supreme': 'Diamond Supreme',
+  // Samsung / Electronics
+  'samsung': 'Samsung', 'galaxy': 'Samsung',
+  'apple': 'Apple', 'iphone': 'Apple', 'ipad': 'Apple', 'macbook': 'Apple', 'airpods': 'Apple',
+  'huawei': 'Huawei', 'oppo': 'OPPO', 'vivo': 'Vivo', 'xiaomi': 'Xiaomi', 'redmi': 'Xiaomi',
+  'realme': 'Realme', 'nokia': 'Nokia', 'sony': 'Sony', 'lg': 'LG', 'philips': 'Philips',
+  'panasonic': 'Panasonic', 'toshiba': 'Toshiba', 'hp': 'HP', 'dell': 'Dell', 'lenovo': 'Lenovo',
+  'asus': 'ASUS', 'acer': 'Acer', 'jbl': 'JBL', 'bose': 'Bose', 'beats': 'Beats',
+  'anker': 'Anker', 'baseus': 'Baseus', 'ugreen': 'UGREEN',
+  // Health / Pharma
+  'panadol': 'GSK', 'disprin': 'Reckitt', 'calpol': 'GSK', 'augmentin': 'GSK',
+  'sensodyne': 'GSK', 'voltaren': 'GSK', 'centrum': 'GSK', 'eno': 'GSK',
+  'ibuprofen': 'Various', 'paracetamol': 'Various',
+};
+
+// GS1 barcode prefix → brand/company mapping for intelligent barcode recognition
+const GS1_PREFIX_TO_BRAND: [string, string][] = [
+  // Pakistan (896)
+  ['8964', 'Various (Pakistan)'],
+  // India (890)
+  ['8901030', 'Hindustan Unilever'], ['89010', 'Various (India)'],
+  // USA (001-019)
+  ['0012000', 'PepsiCo'], ['0049000', 'The Coca-Cola Company'], ['001200080', 'PepsiCo'],
+  ['004900000', 'Coca-Cola'], ['0028400', 'Frito-Lay (PepsiCo)'],
+  // Europe
+  ['871', 'Various (Netherlands)'], ['400', 'Various (Germany)'], ['300', 'Various (France)'],
+  // China (690-699)
+  ['690', 'Various (China)'], ['691', 'Various (China)'], ['692', 'Various (China)'],
+  // Japan (450-459, 490-499)
+  ['450', 'Various (Japan)'], ['490', 'Various (Japan)'],
+  // UK (500-509)
+  ['500', 'Various (UK)'], ['501', 'Various (UK)'],
+  // Turkey (869)
+  ['869', 'Various (Turkey)'],
+  // UAE (629)
+  ['629', 'Various (UAE)'],
+  // Saudi Arabia (628)
+  ['628', 'Various (Saudi Arabia)'],
+];
+
+// ──────────────────────────────────────────────────────────────────
+// INTELLIGENT BRAND RESOLUTION
+// ──────────────────────────────────────────────────────────────────
+function identifyBrandFromName(productName: string): string | null {
+  const lowerName = normalizeProductKey(productName);
+  if (!lowerName) return null;
+
+  // Direct lookup
+  if (PRODUCT_NAME_TO_BRAND[lowerName]) return PRODUCT_NAME_TO_BRAND[lowerName];
+
+  // Check if any known product name is contained within the full name
+  for (const [key, brand] of Object.entries(PRODUCT_NAME_TO_BRAND)) {
+    if (lowerName.includes(key) || key.includes(lowerName)) {
+      return brand;
+    }
+  }
+
+  // Word-level matching: check if the first word or any significant word matches
+  const words = lowerName.split(/\s+/);
+  for (const word of words) {
+    if (word.length < 2) continue;
+    if (PRODUCT_NAME_TO_BRAND[word]) return PRODUCT_NAME_TO_BRAND[word];
+  }
+
+  return null;
+}
+
+function identifyBrandFromBarcode(barcode: string): string | null {
+  if (!barcode || barcode.length < 4) return null;
+
+  // Try longest prefix first for more specific matches
+  for (let len = Math.min(barcode.length, 10); len >= 3; len--) {
+    const prefix = barcode.substring(0, len);
+    const match = GS1_PREFIX_TO_BRAND.find(([p]) => p === prefix);
+    if (match && !match[1].startsWith('Various')) return match[1];
+  }
+  return null;
+}
+
+function resolveBrand(rawBrand: string, productName: string, barcode: string): string {
+  // If brand is already meaningful, capitalize and return
+  const normalized = normalizeBrandKey(rawBrand);
+  if (normalized !== 'unbranded / generic' && rawBrand && rawBrand.trim()) {
+    return capitalizeText(rawBrand.trim());
+  }
+
+  // Try identifying from product name first (most accurate)
+  const brandFromName = identifyBrandFromName(productName);
+  if (brandFromName) return brandFromName;
+
+  // Try identifying from barcode prefix
+  const brandFromBarcode = identifyBrandFromBarcode(barcode);
+  if (brandFromBarcode) return brandFromBarcode;
+
+  return 'Unbranded / Generic';
+}
+
+// ──────────────────────────────────────────────────────────────────
+// EXPANDED CATEGORY CLASSIFICATION
+// ──────────────────────────────────────────────────────────────────
+function classifyProductType(input: any) {
+  const text = normalizeProductKey(input);
+  // Food & Grocery
+  if (/\b(rice|daal|dal|lentil|wheat|flour|atta|sugar|salt|oil|ghee|masala|spice|spices|noodle|noodles|biscuit|biscuits|cookie|cookies|bread|milk|tea|coffee|cereal|snack|snacks|chocolate|ketchup|sauce|pasta|spaghetti|macaroni|vermicelli|jam|jelly|honey|butter|cheese|yogurt|yoghurt|cream cheese|mayo|mayonnaise|vinegar|pickle|chutney|chips|crisps|popcorn|nuts|peanut|almond|cashew|raisin|dates|dried fruit|canned|beans|chickpea|soup|broth|oats|oatmeal|muesli|granola|pancake|waffle|syrup|condensed milk|evaporated milk|powdered milk|candy|toffee|gum|chewing gum|marshmallow|pudding|custard|dessert|cake mix|baking|yeast|cornstarch|gelatin|food color|essence|extract|soy sauce|fish sauce|oyster sauce|hot sauce|bbq sauce|tomato paste|tomato puree|coconut milk|coconut cream|cooking oil|olive oil|canola oil|sunflower oil|corn oil|sesame oil)\b/.test(text)) {
+    return 'food';
+  }
+  // Beverages
+  if (/\b(juice|cola|soda|water|drink|drinks|beverage|beverages|energy drink|soft drink|mineral water|sparkling|tonic|lemonade|iced tea|smoothie|milkshake|squash|cordial|syrup drink|carbonated|non-carbonated|flavored water|coconut water|aloe vera drink|kombucha|malt|beer|wine|spirit|whisky|vodka|rum|gin|brandy|champagne|mocktail)\b/.test(text)) {
+    return 'beverages';
+  }
+  // Cosmetics & Beauty
+  if (/\b(soap|shampoo|cream|lotion|makeup|lipstick|perfume|deodorant|toothpaste|face wash|cosmetic|cosmetics|beauty|skincare|skin care|sunscreen|sunblock|spf|moisturizer|moisturiser|serum|toner|cleanser|exfoliator|scrub|mask|face mask|sheet mask|eye cream|anti-aging|anti aging|wrinkle|acne|pimple|blemish|foundation|concealer|primer|setting spray|powder|blush|bronzer|highlighter|contour|eyeshadow|eye shadow|eyeliner|eye liner|mascara|brow|eyebrow|lip gloss|lip balm|lip liner|nail polish|nail paint|nail remover|hair gel|hair wax|hair spray|hair oil|hair color|hair dye|hair mask|conditioner|body wash|body lotion|body butter|body spray|body mist|hand cream|hand wash|hand sanitizer|cologne|eau de toilette|aftershave|razor|shaving|beard|mustache|wax strip|depilatory|bleach cream|facial|bb cream|cc cream|micellar|makeup remover|cotton pad|cotton ball|cotton bud|q-tip|tweezer|eyelash|false lashes|beauty blender|sponge|brush set|comb|hair brush|hair dryer|straightener|curler|trimmer|clipper|epilator)\b/.test(text)) {
+    return 'cosmetics';
+  }
+  // Electronics
+  if (/\b(charger|mobile|phone|cable|adapter|battery|batteries|earphone|earphones|headphone|headphones|usb|led|bulb|electronics?|laptop|tablet|computer|pc|monitor|screen|keyboard|mouse|speaker|speakers|bluetooth|wifi|router|modem|power bank|powerbank|smart watch|smartwatch|fitness band|camera|webcam|microphone|mic|projector|printer|scanner|hard drive|ssd|flash drive|pen drive|memory card|sd card|sim card|remote|controller|gamepad|console|gaming|smart home|alexa|google home|ring|doorbell|cctv|security camera|drone|robot|gps|tracker|converter|inverter|stabilizer|ups|extension cord|power strip|surge protector|socket|switch|plug|dimmer|fan|heater|air conditioner|ac|cooler|refrigerator|fridge|microwave|oven|blender|mixer|grinder|juicer|toaster|kettle|iron|vacuum|washing machine|dryer|dishwasher|water purifier|air purifier|humidifier|dehumidifier)\b/.test(text)) {
+    return 'electronics';
+  }
+  // Household & Cleaning
+  if (/\b(detergent|cleaner|dishwash|dishwashing|tissue|tissues|napkin|napkins|foil|aluminium foil|aluminum foil|cling wrap|plastic wrap|garbage bag|trash bag|bin liner|brush|mop|broom|bucket|dustpan|sponge|scrubber|steel wool|household|phenyl|bleach|disinfectant|sanitizer|air freshener|room spray|candle|incense|mothball|pest control|insecticide|mosquito|cockroach|ant killer|rat poison|fly paper|gloves|rubber gloves|laundry|fabric softener|starch|stain remover|toilet cleaner|bathroom cleaner|glass cleaner|floor cleaner|kitchen cleaner|multi-purpose|all purpose|polish|wax|drain cleaner|plunger|lint roller|duster|cloth|rag|paper towel|kitchen roll|toilet paper|toilet roll|facial tissue|wet wipes|wipes|match|matchbox|lighter|candle)\b/.test(text)) {
+    return 'household';
+  }
+  // Health & Pharmacy
+  if (/\b(vitamin|vitamins|supplement|supplements|medicine|medication|tablet|capsule|syrup|ointment|balm|bandage|band-aid|plaster|thermometer|sanitizer|antiseptic|antibiotic|painkiller|pain relief|cough|cold|flu|fever|allergy|antacid|laxative|probiotic|protein powder|whey|creatine|omega|fish oil|calcium|iron|zinc|magnesium|multivitamin|herbal|ayurvedic|homeopathic|first aid|medical|health|wellness|pharmacy|pharmaceutical|prescription|otc|over the counter|inhaler|nebulizer|blood pressure|glucose|diabetes|insulin|test strip|pregnancy test|condom|contraceptive|sanitary pad|sanitary napkin|tampon|menstrual|panty liner|diaper|adult diaper|hearing aid|wheelchair|crutch|brace|support|orthopedic|eye drop|ear drop|nasal spray|throat lozenge|dental|denture|mouthwash|floss|dental floss|toothbrush|electric toothbrush)\b/.test(text)) {
+    return 'health';
+  }
+  // Stationery & Office
+  if (/\b(pen|pencil|notebook|eraser|ruler|marker|markers|highlighter|crayon|sketch|drawing|paint|paintbrush|canvas|glue|adhesive|tape|scotch tape|masking tape|scissors|stapler|staples|paper clip|binder|folder|file|envelope|paper|a4|a3|copy paper|printing paper|ink|cartridge|toner|whiteboard|blackboard|chalk|permanent marker|dry erase|sticky note|post-it|index card|calendar|planner|diary|journal|calculator|geometry box|compass|protractor|sharpener|correction fluid|correction tape|white out|rubber band|push pin|thumbtack|bulletin board|desk organizer|pen holder|bookend|laminator|laminating|stationery|school supplies|office supplies)\b/.test(text)) {
+    return 'stationery';
+  }
+  // Baby & Kids
+  if (/\b(baby|infant|toddler|newborn|diaper|diapers|nappy|nappies|baby food|formula|baby formula|baby milk|baby cereal|baby wipes|baby lotion|baby oil|baby powder|baby shampoo|baby soap|baby wash|pacifier|teether|bottle|feeding bottle|sippy cup|bib|baby blanket|swaddle|onesie|romper|baby clothes|stroller|pram|car seat|baby carrier|crib|bassinet|playpen|baby monitor|rattle|toy|toys|stuffed animal|plush|building blocks|puzzle|coloring book|lego)\b/.test(text)) {
+    return 'baby';
+  }
+  // Pet Products
+  if (/\b(dog food|cat food|pet food|pet treat|dog treat|cat treat|pet toy|dog toy|cat toy|pet bed|dog bed|cat bed|leash|collar|pet collar|harness|pet shampoo|flea|tick|pet medicine|litter|cat litter|aquarium|fish food|bird food|bird seed|pet cage|hamster|rabbit|guinea pig|pet grooming|pet brush|pet bowl|dog bowl|cat bowl|kennel|dog house|pet carrier)\b/.test(text)) {
+    return 'pet';
+  }
+  // Automotive
+  if (/\b(engine oil|motor oil|brake fluid|coolant|antifreeze|car wash|car wax|car polish|tire|tyre|wiper|wiper blade|air filter|oil filter|spark plug|car battery|jump cable|car charger|car mount|phone mount|dash cam|car freshener|car perfume|steering|seat cover|floor mat|car cover|fuel additive|lubricant|grease|automotive)\b/.test(text)) {
+    return 'automotive';
+  }
+  // Sports & Fitness
+  if (/\b(sports|sport|fitness|gym|exercise|workout|yoga|mat|dumbbell|weight|barbell|resistance band|jump rope|skipping rope|treadmill|bicycle|cycle|cricket|bat|ball|football|soccer|basketball|tennis|badminton|racket|shuttlecock|gloves|boxing|swimming|goggles|cap|helmet|knee pad|elbow pad|shin guard|jersey|tracksuit|running shoes|sneakers|cleats|water bottle|shaker|gym bag|sports bag)\b/.test(text)) {
+    return 'sports';
+  }
+  return 'unknown';
+}
+
+function displayCategoryFromType(productType: string, fallback?: string) {
+  if (fallback && fallback.trim()) return capitalizeText(fallback.replace(/^en:/, '').replace(/-/g, ' '));
+  switch (productType) {
+    case 'food':
+      return 'Food & Grocery';
+    case 'beverages':
+      return 'Beverages';
+    case 'cosmetics':
+      return 'Cosmetics & Beauty';
+    case 'electronics':
+      return 'Electronics';
+    case 'household':
+      return 'Household & Cleaning';
+    case 'health':
+      return 'Health & Pharmacy';
+    case 'stationery':
+      return 'Stationery & Office';
+    case 'baby':
+      return 'Baby & Kids';
+    case 'pet':
+      return 'Pet Products';
+    case 'automotive':
+      return 'Automotive';
+    case 'sports':
+      return 'Sports & Fitness';
+    default:
+      return 'Other / Custom';
+  }
+}
+
+function mapLocalProductSuggestion(product: any) {
+  const mapped = mapProduct(product);
+  const productType = classifyProductType(`${mapped.category} ${mapped.name} ${mapped.brand || ''}`);
+  // Resolve brand if it's generic
+  const resolvedBrand = resolveBrand(mapped.brand || '', mapped.name, mapped.barcode || '');
+  return {
+    ...mapped,
+    brand: resolvedBrand,
+    source: 'supabase',
+    productType,
+    locked: true,
+  };
+}
+
+function sourceFromProductType(productType: string) {
+  if (productType === 'beauty') return 'open_beauty_facts';
+  if (productType === 'product') return 'open_products_facts';
+  return 'open_food_facts';
+}
+
+function mapOpenFactsProduct(product: any, fallbackBarcode = '', sourceHint = 'open_food_facts') {
+  let name = product?.product_name_en || product?.product_name || product?.generic_name_en || product?.generic_name || '';
+  if (!name) return null;
+
+  // Append quantity/weight to name if available and not already present (e.g. "200 g", "1 kg", "500 ml")
+  const quantity = String(product?.quantity || '').trim();
+  if (quantity && !name.toLowerCase().includes(quantity.toLowerCase())) {
+    // Check if the weight/size info is already embedded in the name
+    const qNorm = quantity.replace(/\s+/g, '').toLowerCase();
+    const nameNorm = name.replace(/\s+/g, '').toLowerCase();
+    if (!nameNorm.includes(qNorm)) {
+      name = `${name} ${quantity}`;
+    }
+  }
+
+  const barcode = String(product?.code || fallbackBarcode || '');
+  const rawBrand = String(product?.brands || '').split(',')[0]?.trim() || '';
+  const brand = resolveBrand(rawBrand, name, barcode);
+  const categoryText = String(product?.categories || product?.categories_tags?.[0] || '');
+  const externalProductType = String(product?.product_type || '').toLowerCase();
+  const typeInput = `${name} ${brand} ${categoryText} ${externalProductType}`;
+  const productType = classifyProductType(typeInput);
+
+  return {
+    source: externalProductType ? sourceFromProductType(externalProductType) : sourceHint,
+    barcode,
+    name,
+    brand,
+    category: displayCategoryFromType(productType, categoryText),
+    imageUrl: product?.image_front_url || product?.image_url || product?.selected_images?.front?.display?.en || '',
+    unitType: 'pcs',
+    productType,
+    locked: true,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────
+// MULTI-SOURCE BARCODE LOOKUP
+// ──────────────────────────────────────────────────────────────────
+
+const OFF_BARCODE_FIELDS = [
+  'code', 'product_name', 'product_name_en', 'generic_name', 'generic_name_en',
+  'brands', 'categories', 'categories_tags', 'image_url', 'image_front_url',
+  'selected_images', 'product_type', 'quantity',
+].join(',');
+
+const OFF_USER_AGENT = 'StockPilotWholesaleERP/1.0 (product lookup; contact: local-app)';
+
+async function fetchFromOpenFactsAPI(baseUrl: string, barcode: string, sourceHint: string) {
+  try {
+    const url = `${baseUrl}/api/v2/product/${encodeURIComponent(barcode)}.json?product_type=all&fields=${encodeURIComponent(OFF_BARCODE_FIELDS)}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(url, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { 'User-Agent': OFF_USER_AGENT },
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data?.status !== 1 || !data?.product) return null;
+    return mapOpenFactsProduct(data.product, barcode, sourceHint);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchUpcItemDbProduct(barcode: string) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(barcode)}`, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json', 'User-Agent': OFF_USER_AGENT },
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data?.items?.length) return null;
+    const item = data.items[0];
+    const name = item.title || '';
+    if (!name) return null;
+    const rawBrand = item.brand || '';
+    const brand = resolveBrand(rawBrand, name, barcode);
+    const categoryText = item.category || '';
+    const productType = classifyProductType(`${name} ${brand} ${categoryText}`);
+    return {
+      source: 'open_products_facts' as const,
+      barcode,
+      name,
+      brand,
+      category: displayCategoryFromType(productType, categoryText),
+      imageUrl: (item.images || [])[0] || '',
+      unitType: 'pcs',
+      productType,
+      locked: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchDuckDuckGoBarcode(barcode: string) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(barcode + ' product')}`, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const html = await response.text();
+
+    // Only trust the result if the barcode itself appears in the page content
+    // This prevents returning completely unrelated products
+    if (!html.includes(barcode)) return null;
+
+    // Parse the first result's snippet or title.
+    const match = html.match(/class="result__snippet[^>]*>([^<]+)<\/a>/i);
+    const titleMatch = html.match(/class="result__title[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i);
+    const text = ((titleMatch ? titleMatch[1] : '') + ' ' + (match ? match[1] : '')).trim();
+    if (!text || text.length < 5) return null;
+    
+    // Reject results that look like generic barcode-lookup sites rather than product pages
+    const junkPatterns = /barcode\s*(lookup|scanner|search|finder|generator|reader)|upc\s*(database|lookup|search)|ean\s*(lookup|search)|find\s*barcode/i;
+    if (junkPatterns.test(text) && !identifyBrandFromName(text)) return null;
+
+    // Attempt to extract name and brand.
+    const rawBrand = identifyBrandFromBarcode(barcode) || identifyBrandFromName(text) || '';
+    const brand = resolveBrand(rawBrand, text, barcode);
+    const productType = classifyProductType(text);
+    
+    // Clean up title
+    let cleanName = (titleMatch ? titleMatch[1] : text).substring(0, 80).replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
+    // Remove barcode from name if present
+    cleanName = cleanName.replace(new RegExp(barcode, 'g'), '').replace(/upc/i, '').replace(/ean/i, '').replace(/barcode/i, '').trim();
+    if (!cleanName) cleanName = text.substring(0, 30);
+    
+    return {
+      source: 'web_search' as const,
+      barcode,
+      name: cleanName,
+      brand,
+      category: displayCategoryFromType(productType),
+      imageUrl: '',
+      unitType: 'pcs',
+      productType,
+      locked: false, // allow user to edit easily since it's scraped
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+async function comprehensiveBarcodeLookup(barcode: string) {
+  // Query all external sources in parallel for maximum coverage
+  const results = await Promise.allSettled([
+    fetchFromOpenFactsAPI('https://world.openfoodfacts.org', barcode, 'open_food_facts'),
+    fetchFromOpenFactsAPI('https://world.openbeautyfacts.org', barcode, 'open_beauty_facts'),
+    fetchFromOpenFactsAPI('https://world.openproductsfacts.org', barcode, 'open_products_facts'),
+    fetchFromOpenFactsAPI('https://world.openpetfoodfacts.org', barcode, 'open_food_facts'),
+    fetchUpcItemDbProduct(barcode),
+    fetchDuckDuckGoBarcode(barcode), // the incredibly powerful generic fallback
+  ]);
+
+  // Return the first successful result
+
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value) {
+      return result.value;
+    }
+  }
+
+  // Last resort: create a minimal product entry from barcode prefix intelligence
+  const brandFromBarcode = identifyBrandFromBarcode(barcode);
+  if (brandFromBarcode) {
+    return {
+      source: 'open_products_facts' as const,
+      barcode,
+      name: '',
+      brand: brandFromBarcode,
+      category: 'Other / Custom',
+      imageUrl: '',
+      unitType: 'pcs',
+      productType: 'unknown',
+      locked: false,
+    };
+  }
+
+  return null;
+}
+
+// Keep backward-compatible function name
+async function fetchOpenFoodFactsProductByBarcode(barcode: string) {
+  return comprehensiveBarcodeLookup(barcode);
+}
+
+async function searchOpenFoodFacts(query: string) {
+  const sources = [
+    { baseUrl: 'https://world.openfoodfacts.org', source: 'open_food_facts' },
+    { baseUrl: 'https://world.openbeautyfacts.org', source: 'open_beauty_facts' },
+    { baseUrl: 'https://world.openproductsfacts.org', source: 'open_products_facts' },
+  ];
+
+  const searchFields = 'code,product_name,product_name_en,generic_name,generic_name_en,brands,categories,categories_tags,image_url,image_front_url,selected_images,product_type,quantity';
+
+  const results = await Promise.all(sources.map(async ({ baseUrl, source }) => {
+    const params = new URLSearchParams({
+      search_terms: query,
+      search_simple: '1',
+      action: 'process',
+      json: '1',
+      page_size: '6',
+      fields: searchFields,
+    });
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      const response = await fetch(`${baseUrl}/cgi/search.pl?${params.toString()}`, {
+        signal: controller.signal,
+        headers: { 'User-Agent': OFF_USER_AGENT },
+      });
+      clearTimeout(timeout);
+      if (!response.ok) return [];
+      const data = await response.json();
+      return (data?.products || [])
+        .map((product: any) => mapOpenFactsProduct(product, '', source))
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }));
+
+  const seen = new Set<string>();
+  return results.flat().filter((product: any) => {
+    const key = normalizeProductKey(product.barcode || `${product.name} ${product.brand} ${product.category}`);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 12);
 }
 
 function extractFirstNumber(text: string, fallback = 0): number {
@@ -922,15 +1508,86 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       res.status(500).json({ error: formatDatabaseError(error) });
     }
   });
+
+  app.get("/api/product-lookup/search", async (req, res) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      if (q.length < 2) return res.json({ suggestions: [] });
+
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('user_id', getRequestUserId(req));
+      if (error) return sendTenantSchemaError(res, 'products', error);
+
+      const normalizedQuery = normalizeProductKey(q);
+      const localMatches = (data || [])
+        .filter((product: any) => {
+          const mapped = mapProduct(product);
+          return normalizeProductKey(`${mapped.name} ${mapped.brand || ''} ${mapped.category} ${mapped.barcode} ${mapped.sku}`)
+            .includes(normalizedQuery);
+        })
+        .slice(0, 8)
+        .map(mapLocalProductSuggestion);
+
+      if (localMatches.length > 0) {
+        return res.json({ suggestions: localMatches, source: 'supabase' });
+      }
+
+      const externalMatches = await searchOpenFoodFacts(q);
+      res.json({ suggestions: externalMatches, source: 'open_food_facts' });
+    } catch (error: any) {
+      console.error("Product lookup search failed:", error);
+      res.status(500).json({ error: error.message || "Product lookup failed" });
+    }
+  });
+
+  app.get("/api/product-lookup/barcode/:barcode", async (req, res) => {
+    try {
+      const barcode = String(req.params.barcode || '').trim();
+      if (!barcode) return res.status(400).json({ error: "Barcode is required" });
+
+      const localProduct = await findProductByBarcode(req, barcode);
+      if (localProduct) {
+        return res.json({
+          status: 'found',
+          source: 'supabase',
+          product: mapLocalProductSuggestion(localProduct),
+        });
+      }
+
+      const externalProduct = await fetchOpenFoodFactsProductByBarcode(barcode);
+      if (externalProduct) {
+        return res.json({
+          status: 'found',
+          source: 'open_food_facts',
+          product: externalProduct,
+        });
+      }
+
+      res.json({ status: 'not_found', source: 'none', barcode });
+    } catch (error: any) {
+      console.error("Barcode lookup failed:", error);
+      res.status(500).json({ error: error.message || "Barcode lookup failed" });
+    }
+  });
   
   app.post("/api/products", async (req, res) => {
     console.log("POST /api/products body:", req.body);
-    const { id, name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold } = req.body;
+    const { id, name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice } = req.body;
     
     const capName = name ? capitalizeText(name) : '';
     const capCategory = category ? capitalizeText(category) : '';
     const capBrand = brand ? capitalizeText(brand) : '';
     try {
+      const barcodeDuplicate = await findProductByBarcode(req, barcode);
+      if (barcodeDuplicate) {
+        await deleteCloudinaryImage(getCloudinaryPublicIdFromUrl(imageUrl));
+        return res.status(409).json({
+          error: 'Product with this barcode already exists. Add stock to the existing product instead.'
+        });
+      }
+
       const duplicate = await findDuplicateProduct(req, capName, capCategory, capBrand);
       if (duplicate) {
         await deleteCloudinaryImage(getCloudinaryPublicIdFromUrl(imageUrl));
@@ -943,7 +1600,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       return sendDatabaseError(res, error, "Failed to check duplicate product");
     }
     
-    const parsedSku = `${sku || ''}::${barcode || ''}::${lowInventoryThreshold !== undefined ? lowInventoryThreshold : ''}`;
+    const parsedSku = buildProductSkuMeta(sku, barcode, lowInventoryThreshold, unitType, purchasePrice);
 
     const dbRow = withOwner(req, {
       id: id || randomUUID(),
@@ -973,11 +1630,21 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.put("/api/products/:id", async (req, res) => {
     try {
-      const { name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold } = req.body;
+      const { name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice } = req.body;
       const { data: existingProduct, error: existingError } = await supabase.from('products').select('*').eq('id', req.params.id).eq('user_id', getRequestUserId(req)).single();
       if (existingError && existingError.code !== 'PGRST116') return sendTenantSchemaError(res, 'products', existingError);
       if (!existingProduct) {
         return res.status(404).json({ error: "Product not found" });
+      }
+
+      const existingSkuMeta = parseProductSkuMeta(existingProduct.sku);
+      const nextBarcode = barcode !== undefined ? barcode : existingSkuMeta.barcode;
+      const barcodeDuplicate = await findProductByBarcode(req, nextBarcode, req.params.id);
+      if (barcodeDuplicate) {
+        await deleteCloudinaryImage(getCloudinaryPublicIdFromUrl(imageUrl));
+        return res.status(409).json({
+          error: 'Product with this barcode already exists. Add stock to the existing product instead.'
+        });
       }
       
       const capName = name !== undefined ? capitalizeText(name) : existingProduct.name;
@@ -991,11 +1658,17 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         });
       }
 
-      const parsedSku = `${sku || ''}::${barcode || ''}::${lowInventoryThreshold !== undefined ? lowInventoryThreshold : ''}`;
+      const parsedSku = buildProductSkuMeta(
+        sku !== undefined ? sku : existingSkuMeta.sku,
+        nextBarcode,
+        lowInventoryThreshold !== undefined ? lowInventoryThreshold : existingSkuMeta.lowInventoryThreshold,
+        unitType !== undefined ? unitType : existingSkuMeta.unitType,
+        purchasePrice !== undefined ? purchasePrice : existingSkuMeta.purchasePrice,
+      );
 
       const dbRow: any = {};
       if (name !== undefined) dbRow.name = capName;
-      if (sku !== undefined || barcode !== undefined || lowInventoryThreshold !== undefined) {
+      if (sku !== undefined || barcode !== undefined || lowInventoryThreshold !== undefined || unitType !== undefined || purchasePrice !== undefined) {
         dbRow.sku = parsedSku;
       }
       if (stock !== undefined) dbRow.stock = stock;

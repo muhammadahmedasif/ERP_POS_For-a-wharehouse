@@ -25,8 +25,7 @@ import { cn } from "./lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
-import Categories from "./pages/Categories";
-import Brands from "./pages/Brands";
+import ManageTaxonomies from "./pages/ManageTaxonomies";
 import Sales from "./pages/Sales";
 import AIAssistant from "./pages/AIAssistant";
 import Settings from "./pages/Settings";
@@ -53,8 +52,7 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
   const menuItems = [
     { name: "Dashboard", icon: LayoutDashboard, path: "/" },
     { name: t("inventory"), icon: Package, path: "/inventory" },
-    { name: "Categories", icon: Tag, path: "/categories" },
-    { name: "Brands", icon: Bookmark, path: "/brands" },
+    { name: "Categories & Brands", icon: Tag, path: "/categories" },
     { name: "Customers", icon: Users, path: "/customers" },
     { name: t("sales"), icon: ShoppingCart, path: "/sales" },
     { name: "New Sale", icon: PlusCircle, path: "/sales/new" },
@@ -168,9 +166,7 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
       case "/inventory":
         return "Inventory";
       case "/categories":
-        return "Categories";
-      case "/brands":
-        return "Brands";
+        return "Categories & Brands";
       case "/customers":
         return "Customers";
       case "/sales":
@@ -228,7 +224,7 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
             </motion.button>
             <div className="text-right hidden sm:block">
               <p className="text-sm font-bold leading-none text-slate-800">
-                {user?.name || settings.sellerName || "Admin"}
+                {settings.sellerName || user?.name || "Admin"}
               </p>
               <p className="text-xs text-slate-500 mt-1 font-medium">
                 {settings.storeName}
@@ -241,7 +237,7 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
               {settings.profilePictureUrl ? (
                 <img src={settings.profilePictureUrl} alt="Logo" className="w-full h-full object-cover"/>
               ) : (
-                (user?.name || settings.sellerName || 'A').charAt(0)
+                (settings.sellerName || user?.name || 'A').charAt(0).toUpperCase()
               )}
             </motion.div>
           </>
@@ -304,8 +300,7 @@ function AppContent() {
                 <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
                 <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
-                <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
-                <Route path="/brands" element={<ProtectedRoute><Brands /></ProtectedRoute>} />
+                <Route path="/categories" element={<ProtectedRoute><ManageTaxonomies /></ProtectedRoute>} />
                 <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
                 <Route path="/sales/new" element={<ProtectedRoute><Sales initialView="new" /></ProtectedRoute>} />
                 <Route path="/top-products" element={<ProtectedRoute><TopProducts /></ProtectedRoute>} />
