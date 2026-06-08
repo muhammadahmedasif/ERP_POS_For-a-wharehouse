@@ -638,6 +638,7 @@ const OFF_BARCODE_FIELDS = [
 ].join(',');
 
 const OFF_USER_AGENT = 'StockPilotWholesaleERP/1.0 (product lookup; contact: local-app)';
+const WEB_SEARCH_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function fetchFromOpenFactsAPI(baseUrl: string, barcode: string, sourceHint: string) {
   try {
@@ -693,58 +694,118 @@ async function fetchUpcItemDbProduct(barcode: string) {
   }
 }
 
-async function fetchDuckDuckGoBarcode(barcode: string) {
+function decodeSearchText(value: any) {
+  return String(value || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanSearchProductName(title: string, barcode: string) {
+  return decodeSearchText(title)
+    .replace(new RegExp(barcode, 'g'), '')
+    .replace(/\b(upc|ean|barcode|gtin)\b/gi, '')
+    .replace(/\s*[-|:]\s*(amazon|ebay|walmart|barcode lookup|upc lookup|ean lookup|isbn search|upc database|open food facts|open products facts).*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 90);
+}
+
+function mapSearchResultProduct(barcode: string, rawTitle: string, rawSnippet = '') {
+  const title = decodeSearchText(rawTitle);
+  const snippet = decodeSearchText(rawSnippet);
+  const text = `${title} ${snippet}`.trim();
+  if (!text || text.length < 5) return null;
+
+  const junkPatterns = /barcode\s*(lookup|scanner|search|finder|generator|reader)|upc\s*(database|lookup|search)|ean\s*(lookup|search)|gtin\s*(lookup|search)|find\s*barcode/i;
+  const directoryTitlePatterns = /\b(lookup|search|database|finder|scanner|isbn)\b/i;
+  const nonProductPatterns = /\b(google translate|translate|translator|dictionary|youtube|facebook|instagram|linkedin|login|sign in|map|maps|image search|news|pdf|manual|wikipedia)\b/i;
+  const productSignalPatterns = /\b(product|price|buy|shop|store|pack|packet|case|carton|box|bottle|can|jar|tin|pouch|sachet|bar|tube|ml|cl|l|liter|litre|g|gm|gram|kg|pcs|piece|pieces)\b/i;
+  const productType = classifyProductType(text);
+  const titleLooksProductLike = productSignalPatterns.test(title) || classifyProductType(title) !== 'unknown';
+  const brandHint = identifyBrandFromBarcode(barcode) || (titleLooksProductLike || text.includes(barcode) ? identifyBrandFromName(title) : '') || '';
+
+  if (nonProductPatterns.test(text)) return null;
+  if (directoryTitlePatterns.test(title) && !identifyBrandFromName(title) && classifyProductType(title) === 'unknown') return null;
+  if (junkPatterns.test(text) && !brandHint) return null;
+  if (!text.includes(barcode) && !brandHint) return null;
+  if (!brandHint && productType === 'unknown' && !productSignalPatterns.test(text)) return null;
+
+  let cleanName = cleanSearchProductName(title, barcode) || cleanSearchProductName(text, barcode);
+  if (!cleanName || cleanName.length < 3) return null;
+  if (directoryTitlePatterns.test(cleanName) && !identifyBrandFromName(cleanName) && classifyProductType(cleanName) === 'unknown') return null;
+  if (junkPatterns.test(cleanName) && !brandHint) return null;
+
+  const brand = resolveBrand(brandHint, cleanName, barcode);
+
+  return {
+    source: 'web_search' as const,
+    barcode,
+    name: cleanName,
+    brand,
+    category: displayCategoryFromType(productType),
+    imageUrl: '',
+    productType,
+    locked: false,
+  };
+}
+
+async function fetchSearchHtml(url: string, timeoutMs = 6000) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(barcode + ' product')}`, {
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': WEB_SEARCH_USER_AGENT,
+        'Accept': 'text/html,application/xhtml+xml',
       }
     });
     clearTimeout(timeout);
-    if (!response.ok) return null;
-    const html = await response.text();
-
-    // Only trust the result if the barcode itself appears in the page content
-    // This prevents returning completely unrelated products
-    if (!html.includes(barcode)) return null;
-
-    // Parse the first result's snippet or title.
-    const match = html.match(/class="result__snippet[^>]*>([^<]+)<\/a>/i);
-    const titleMatch = html.match(/class="result__title[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i);
-    const text = ((titleMatch ? titleMatch[1] : '') + ' ' + (match ? match[1] : '')).trim();
-    if (!text || text.length < 5) return null;
-    
-    // Reject results that look like generic barcode-lookup sites rather than product pages
-    const junkPatterns = /barcode\s*(lookup|scanner|search|finder|generator|reader)|upc\s*(database|lookup|search)|ean\s*(lookup|search)|find\s*barcode/i;
-    if (junkPatterns.test(text) && !identifyBrandFromName(text)) return null;
-
-    // Attempt to extract name and brand.
-    const rawBrand = identifyBrandFromBarcode(barcode) || identifyBrandFromName(text) || '';
-    const brand = resolveBrand(rawBrand, text, barcode);
-    const productType = classifyProductType(text);
-    
-    // Clean up title
-    let cleanName = (titleMatch ? titleMatch[1] : text).substring(0, 80).replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
-    // Remove barcode from name if present
-    cleanName = cleanName.replace(new RegExp(barcode, 'g'), '').replace(/upc/i, '').replace(/ean/i, '').replace(/barcode/i, '').trim();
-    if (!cleanName) cleanName = text.substring(0, 30);
-    
-    return {
-      source: 'web_search' as const,
-      barcode,
-      name: cleanName,
-      brand,
-      category: displayCategoryFromType(productType),
-      imageUrl: '',
-      productType,
-      locked: false, // allow user to edit easily since it's scraped
-    };
-  } catch (e) {
-    return null;
+    if (!response.ok) return '';
+    return await response.text();
+  } catch {
+    return '';
   }
+}
+
+async function fetchDuckDuckGoBarcode(barcode: string) {
+  const html = await fetchSearchHtml(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(barcode + ' product')}`);
+  if (!html) return null;
+
+  const titleRegex = /class="result__title[^"]*"[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = titleRegex.exec(html))) {
+    const nextChunk = html.slice(titleRegex.lastIndex, titleRegex.lastIndex + 1600);
+    const snippetMatch = nextChunk.match(/class="result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
+      || nextChunk.match(/class="result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const mapped = mapSearchResultProduct(barcode, match[1], snippetMatch?.[1] || '');
+    if (mapped) return mapped;
+  }
+
+  return null;
+}
+
+async function fetchBingBarcode(barcode: string) {
+  const html = await fetchSearchHtml(`https://www.bing.com/search?q=${encodeURIComponent(barcode + ' product')}`);
+  if (!html) return null;
+
+  const resultRegex = /<li[^>]+class="b_algo"[\s\S]*?<h2[^>]*>\s*<a[^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<p[^>]*>([\s\S]*?)<\/p>)?/gi;
+  let match: RegExpExecArray | null;
+  while ((match = resultRegex.exec(html))) {
+    const mapped = mapSearchResultProduct(barcode, match[1], match[2] || '');
+    if (mapped) return mapped;
+  }
+
+  return null;
 }
 
 async function comprehensiveBarcodeLookup(barcode: string) {
@@ -755,7 +816,8 @@ async function comprehensiveBarcodeLookup(barcode: string) {
     fetchFromOpenFactsAPI('https://world.openproductsfacts.org', barcode, 'open_products_facts'),
     fetchFromOpenFactsAPI('https://world.openpetfoodfacts.org', barcode, 'open_food_facts'),
     fetchUpcItemDbProduct(barcode),
-    fetchDuckDuckGoBarcode(barcode), // the incredibly powerful generic fallback
+    fetchBingBarcode(barcode),
+    fetchDuckDuckGoBarcode(barcode),
   ]);
 
   // Return the first successful result
@@ -1594,7 +1656,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       if (externalProduct) {
         return res.json({
           status: 'found',
-          source: 'open_food_facts',
+          source: externalProduct.source || 'open_food_facts',
           product: externalProduct,
         });
       }

@@ -12,7 +12,7 @@ import { cn } from "../lib/utils";
 import { useAppStore } from "../store";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 
-type LookupSource = "supabase" | "open_food_facts" | "open_beauty_facts" | "open_products_facts";
+type LookupSource = "supabase" | "open_food_facts" | "open_beauty_facts" | "open_products_facts" | "web_search";
 
 type SmartSuggestion = Partial<Product> & {
   source: LookupSource;
