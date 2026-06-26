@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+
 import { useAppStore } from "../store";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -8,9 +8,10 @@ import { Plus, Trash2, Tag, Bookmark, ShieldCheck, ArrowLeft } from "lucide-reac
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
+import { toast } from "sonner";
 
 export default function ManageTaxonomies() {
-  const { t } = useTranslation();
+  
   const {
     categories, fetchCategories, addCategory, deleteCategory,
     brands, fetchBrands, addBrand, deleteBrand,
@@ -71,22 +72,35 @@ export default function ManageTaxonomies() {
       ? products.some(p => p.category?.toLowerCase() === name.toLowerCase())
       : products.some(p => p.brand?.toLowerCase() === name.toLowerCase());
 
-    const confirmMsg = isUsing
-      ? `Warning: ${isCategory ? 'Category' : 'Brand'} "${name}" is currently used by some products in your inventory. Are you sure you want to delete it anyway?`
-      : `Are you sure you want to delete the ${typeName} "${name}"?`;
+    const description = isUsing
+      ? `"${name}" is used by some products. Products will lose this ${typeName}.`
+      : `This cannot be undone.`;
 
-    if (confirm(confirmMsg)) {
-      try {
-        if (isCategory) {
-          await deleteCategory(id);
-        } else {
-          await deleteBrand(id);
+    toast(`Delete ${typeName} "${name}"?`, {
+      description,
+      action: {
+        label: 'Yes, Delete',
+        onClick: async () => {
+          try {
+            if (isCategory) {
+              await deleteCategory(id);
+            } else {
+              await deleteBrand(id);
+            }
+            setSuccess(`${isCategory ? 'Category' : 'Brand'} deleted successfully.`);
+            toast.success(`${isCategory ? 'Category' : 'Brand'} "${name}" deleted.`);
+          } catch (err: any) {
+            setError(err.message || `Failed to delete ${typeName}.`);
+            toast.error(err.message || `Failed to delete ${typeName}.`);
+          }
         }
-        setSuccess(`${isCategory ? 'Category' : 'Brand'} deleted successfully.`);
-      } catch (err: any) {
-        setError(err.message || `Failed to delete ${typeName}.`);
-      }
-    }
+      },
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {}
+      },
+      duration: 10000,
+    });
   };
 
   const activeList = activeTab === "categories" ? categories : brands;
@@ -102,7 +116,7 @@ export default function ManageTaxonomies() {
           </Link>
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Tag className="w-5 h-5 text-indigo-600" />
-            Manage Inventory
+            Categories & Brands
           </h2>
         </div>
 

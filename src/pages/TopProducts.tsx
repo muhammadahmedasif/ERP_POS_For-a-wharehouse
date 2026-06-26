@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Product } from '../types';
 
 export default function TopProducts() {
-  const { t } = useTranslation();
+  
   
   const [selectedMonth, setSelectedMonth] = useState("");
   const [sales, setSales] = useState<any[]>([]);

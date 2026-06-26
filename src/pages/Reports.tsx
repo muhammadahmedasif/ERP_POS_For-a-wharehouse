@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+
 import { useAppStore } from "../store";
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { jsPDF } from "jspdf";
@@ -64,7 +65,7 @@ interface Sale {
 }
 
 export default function Reports() {
-  const { t } = useTranslation();
+  
   const { products, categories, fetchProducts, fetchCategories } = useAppStore();
   const [sales, setSales] = useState<Sale[]>([]);
   const [dateFilter, setDateFilter] = useState<"all" | "7days" | "30days" | "thismonth">("all");
@@ -217,7 +218,7 @@ export default function Reports() {
       link.click();
       document.body.removeChild(link);
     } catch (e) {
-      alert("CSV export error.");
+      toast.error('CSV export error.');
     }
   };
 
@@ -607,154 +608,100 @@ export default function Reports() {
       doc.save(`ERP_Detailed_Operations_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err) {
       console.error("PDF generation failed:", err);
-      alert("Error printing PDF: " + (err instanceof Error ? err.message : String(err)));
+      toast.error('Error generating PDF: ' + (err instanceof Error ? err.message : String(err)));
     }
   };;
 
   return (
     <div className="space-y-6">
-      
-      {/* HEADER SECTION */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-100 shadow-sm">
+
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-indigo-600" />
-            Wholesale Analytical Reports Center
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">Real-time assets audit and interactive category breakdown charts.</p>
+          <h2 className="text-2xl font-black text-slate-900">Business Summary</h2>
+          <p className="text-sm text-slate-500 mt-0.5">See how your business is doing at a glance.</p>
         </div>
-
         <div className="flex flex-wrap items-center gap-2">
-          {/* Date Picker Button Actions */}
-          <div className="inline-flex rounded-md shadow-sm bg-slate-100 p-0.5">
-            <button
-              onClick={() => setDateFilter("all")}
-              className={`px-3 py-1 text-xs font-bold rounded-md ${
-                dateFilter === "all" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-950"
-              }`}
-            >
-              All Time
-            </button>
-            <button
-              onClick={() => setDateFilter("7days")}
-              className={`px-3 py-1 text-xs font-bold rounded-md ${
-                dateFilter === "7days" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-950"
-              }`}
-            >
-              7 Days
-            </button>
-            <button
-              onClick={() => setDateFilter("30days")}
-              className={`px-3 py-1 text-xs font-bold rounded-md ${
-                dateFilter === "30days" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-950"
-              }`}
-            >
-              30 Days
-            </button>
-            <button
-              onClick={() => setDateFilter("thismonth")}
-              className={`px-3 py-1 text-xs font-bold rounded-md ${
-                dateFilter === "thismonth" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-950"
-              }`}
-            >
-              This Month
-            </button>
+          {/* Date Filter */}
+          <div className="inline-flex rounded-lg bg-slate-100 p-0.5 gap-0.5">
+            {(["all", "7days", "30days", "thismonth"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setDateFilter(f)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
+                  dateFilter === f ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {f === "all" ? "All Time" : f === "7days" ? "Last 7 Days" : f === "30days" ? "Last 30 Days" : "This Month"}
+              </button>
+            ))}
           </div>
-
-          <Button onClick={handleDownloadPDF} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 text-xs">
-            <FileText className="w-3.5 h-3.5 mr-1.5" /> Detailed Report Generation (PDF)
+          <Button onClick={handleDownloadPDF} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 text-xs">
+            <FileText className="w-3.5 h-3.5 mr-1.5" /> Download Report
           </Button>
         </div>
       </div>
 
-      {/* Bento Grid Stats Cards */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        
-        {/* Metric 1 */}
-        <Card className="shadow-xs border border-slate-100 transition-all hover:bg-slate-50/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-[11px] font-extrabold uppercase tracking-widest text-[#64748B]">Total Revenue</CardTitle>
-            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
-              <DollarSign className="w-4 h-4" />
+      {/* 4 KEY NUMBERS */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <Card className="border border-slate-100 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-semibold text-slate-500">Total Sales</p>
+              <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><DollarSign className="w-4 h-4" /></div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-black text-slate-900">Rs. {totalRevenue.toLocaleString()}</div>
-            <p className="text-[10px] text-indigo-500 font-bold mt-1 inline-flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" /> +12.4% last week
-            </p>
+            <p className="text-2xl font-black text-slate-900 mt-2">Rs. {totalRevenue.toLocaleString()}</p>
+            <p className="text-xs text-slate-400 mt-1">{filteredSales.length} orders</p>
           </CardContent>
         </Card>
 
-        {/* Metric 2 */}
-        <Card className="shadow-xs border border-slate-100 transition-all hover:bg-slate-50/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-[11px] font-extrabold uppercase tracking-widest text-[#64748B]">Inventory Net Value</CardTitle>
-            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
-              <Package className="w-4 h-4" />
+        <Card className="border border-slate-100 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-semibold text-slate-500">Stock Value</p>
+              <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><Package className="w-4 h-4" /></div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-black text-slate-900">Rs. {totalInventoryAssetValue.toLocaleString()}</div>
-            <p className="text-[10px] text-slate-500 mt-1 font-bold">In-stock asset valuation</p>
+            <p className="text-2xl font-black text-slate-900 mt-2">Rs. {totalInventoryAssetValue.toLocaleString()}</p>
+            <p className="text-xs text-slate-400 mt-1">Current inventory worth</p>
           </CardContent>
         </Card>
 
-        {/* Metric 3 */}
-        <Card className="shadow-xs border border-slate-100 transition-all hover:bg-slate-50/50">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-[11px] font-extrabold uppercase tracking-widest text-[#64748B]">Avg Order Value</CardTitle>
-            <div className="p-2 bg-purple-50 text-purple-700 rounded-lg">
-              <ShoppingBag className="w-4 h-4" />
+        <Card className="border border-slate-100 shadow-sm">
+          <CardContent className="p-5">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-semibold text-slate-500">Avg. Sale Value</p>
+              <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><ShoppingBag className="w-4 h-4" /></div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-black text-slate-900">Rs. {Math.round(averageOrderValue).toLocaleString()}</div>
-            <p className="text-[10px] text-purple-500 font-bold mt-1">Based on {filteredSales.length} orders</p>
+            <p className="text-2xl font-black text-slate-900 mt-2">Rs. {Math.round(averageOrderValue).toLocaleString()}</p>
+            <p className="text-xs text-slate-400 mt-1">Per order average</p>
           </CardContent>
         </Card>
 
-        {/* Metric 4 */}
-        <Card className={`shadow-xs border transition-all ${
-          lowStockCount > 0 ? "border-rose-100 bg-rose-50/10 hover:bg-rose-50/20" : "border-slate-100 hover:bg-slate-50/50"
-        }`}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-[11px] font-extrabold uppercase tracking-widest text-[#64748B]">Low Stock Alerts</CardTitle>
-            <div className={`p-2 rounded-lg ${lowStockCount > 0 ? "bg-rose-100 text-rose-700 animate-pulse" : "bg-slate-100 text-slate-600"}`}>
-              <AlertTriangle className="w-4 h-4" />
+        <Card className={`border shadow-sm ${lowStockCount > 0 ? "border-rose-100 bg-rose-50/20" : "border-slate-100"}`}>
+          <CardContent className="p-5">
+            <div className="flex justify-between items-start">
+              <p className="text-xs font-semibold text-slate-500">Low Stock Items</p>
+              <div className={`p-1.5 rounded-lg ${lowStockCount > 0 ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-500"}`}>
+                <AlertTriangle className="w-4 h-4" />
+              </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-xl font-black ${lowStockCount > 0 ? "text-rose-750" : "text-slate-900"}`}>
-              {lowStockCount} Products
-            </div>
-            <p className="text-[10px] text-slate-500 mt-1 font-bold">
-              {lowStockCount > 0 ? "Urgent re-order required" : "All levels satisfied"}
-            </p>
+            <p className={`text-2xl font-black mt-2 ${lowStockCount > 0 ? "text-rose-700" : "text-slate-900"}`}>{lowStockCount} items</p>
+            <p className="text-xs text-slate-400 mt-1">{lowStockCount > 0 ? "Need restocking soon" : "All levels are fine"}</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Main Charts Row */}
-      <div className="grid gap-6 md:grid-cols-2">
-        
-        {/* CHART 1: CHRONOLOGICAL REVENUE TREND */}
-        <Card className="shadow-xs border border-slate-100">
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <div>
-                <CardTitle className="text-sm font-extrabold uppercase tracking-wider text-slate-600">Chronological Revenue trend</CardTitle>
-                <p className="text-xs text-slate-400 mt-0.5">Timeline of sales order totals</p>
-              </div>
-              <span className="text-[10px] font-extrabold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-mono">
-                {salesChartData.length} records active
-              </span>
-            </div>
+      {/* SALES CHART + PIE CHART */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="border border-slate-100 shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold text-slate-700">Sales Over Time</CardTitle>
+            <p className="text-xs text-slate-400">How much you sold each day</p>
           </CardHeader>
-          <CardContent className="h-[300px]">
+          <CardContent className="h-[260px]">
             {salesChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={salesChartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                <AreaChart data={salesChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.2}/>
@@ -762,220 +709,136 @@ export default function Reports() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                  <XAxis 
-                    dataKey="date" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fill: "#64748B", fontSize: 11 }} 
-                  />
-                  <YAxis 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fill: "#64748B", fontSize: 11 }}
-                    tickFormatter={(v) => `Rs.${v}`}
-                  />
-                  <Tooltip 
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#94A3B8", fontSize: 11 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={(v) => `Rs.${v}`} />
+                  <Tooltip
                     cursor={{ stroke: "#4F46E5", strokeWidth: 1 }}
-                    contentStyle={{ borderRadius: "8px", borderColor: "#F1F5F9", fontSize: "12px", fontWeight: "bold" }}
+                    contentStyle={{ borderRadius: "8px", borderColor: "#F1F5F9", fontSize: "12px" }}
+                    formatter={(v: any) => [`Rs. ${Number(v).toLocaleString()}`, "Sales"]}
                   />
                   <Area type="monotone" dataKey="revenue" stroke="#4F46E5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center text-xs text-slate-400">
-                No sales data available.
-              </div>
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">No sales data yet.</div>
             )}
           </CardContent>
         </Card>
 
-        {/* CHART 2: PIE CHART (CATEGORY STOCK VALUE BREAKDOWN) - FIXING INVISIBILITY */}
-        <Card className="shadow-xs border border-slate-100 flex flex-col">
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <div>
-                <CardTitle className="text-sm font-extrabold uppercase tracking-wider text-slate-600">Category Net Stock Distribution (Pie Chart)</CardTitle>
-                <p className="text-xs text-slate-400 mt-0.5">Asset shares per category (Stock Qty × Price)</p>
-              </div>
-              <div className="flex items-center gap-1 bg-purple-50 text-purple-700 text-[10px] px-2 py-0.5 rounded font-extrabold uppercase">
-                <Layers className="w-3 h-3" /> PIE Breakdown
-              </div>
-            </div>
+        <Card className="border border-slate-100 shadow-sm flex flex-col">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold text-slate-700">Stock by Category</CardTitle>
+            <p className="text-xs text-slate-400">Which category has the most value in stock</p>
           </CardHeader>
-          <CardContent className="flex-1 flex flex-col justify-between h-[300px]">
-            {categoryStockPieData.length > 0 && products.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 items-center h-full gap-2">
-                {/* Visual Chart Container */}
-                <div className="col-span-2 h-[220px] w-full relative">
+          <CardContent className="flex-1 h-[260px]">
+            {products.length > 0 ? (
+              <div className="grid grid-cols-3 items-center h-full gap-2">
+                <div className="col-span-2 h-[200px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie
-                        data={categoryStockPieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={80}
-                        paddingAngle={4}
-                        dataKey="value"
-                      >
-                        {categoryStockPieData.map((entry, index) => (
+                      <Pie data={categoryStockPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
+                        {categoryStockPieData.map((_, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip 
-                        formatter={(val) => `Rs. ${parseInt(val as string).toLocaleString()}`}
-                        contentStyle={{ borderRadius: "8px", borderColor: "#F1F5F9" }}
-                      />
+                      <Tooltip formatter={(val) => `Rs. ${parseInt(val as string).toLocaleString()}`} contentStyle={{ borderRadius: "8px", borderColor: "#F1F5F9" }} />
                     </PieChart>
                   </ResponsiveContainer>
-                  {/* Decorative Sparkle inside Pie Center */}
-                  <div className="absolute top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] text-center">
-                    <span className="text-[10px] text-slate-400 font-extrabold uppercase block tracking-wider leading-none">Net Value</span>
-                    <span className="text-xs font-serif font-black text-slate-800 leading-none">Rs. {(totalInventoryAssetValue / 1000).toFixed(1)}k</span>
-                  </div>
                 </div>
-
-                {/* Slices legend right sidebar */}
-                <div className="col-span-1 border-l border-slate-100 pl-3 space-y-2 max-h-[220px] overflow-y-auto">
+                <div className="col-span-1 space-y-2 max-h-[220px] overflow-y-auto">
                   {categoryStockPieData.map((item, idx) => {
-                    const pct = totalInventoryAssetValue > 0 ? ((item.value / totalInventoryAssetValue) * 100).toFixed(1) : "0";
+                    const pct = totalInventoryAssetValue > 0 ? ((item.value / totalInventoryAssetValue) * 100).toFixed(0) : "0";
                     return (
-                      <div key={item.name} className="space-y-0.5">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></span>
-                          <span className="text-[11px] font-extrabold text-slate-700 truncate block max-w-[80px]" title={item.name}>
-                            {item.name}
-                          </span>
+                      <div key={item.name} className="flex items-start gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-sm mt-0.5 shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-700 leading-tight">{item.name}</p>
+                          <p className="text-[10px] text-slate-400">{pct}%</p>
                         </div>
-                        <span className="text-[10px] font-mono font-bold text-slate-400 pl-4 block">
-                          Rs. {item.value.toLocaleString()} ({pct}%)
-                        </span>
                       </div>
                     );
                   })}
                 </div>
               </div>
             ) : (
-              <div className="flex h-full items-center justify-center text-xs text-slate-400">
-                Please add products to view category distribution.
-              </div>
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">Add products to see this chart.</div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Grid containing product lists */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-12">
-        
-        {/* TOP SELLING PRODUCTS */}
-        <Card className="shadow-xs border border-slate-100 lg:col-span-7">
+      {/* BEST SELLING PRODUCTS + LOW STOCK */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-12">
+        <Card className="border border-slate-100 shadow-sm lg:col-span-7">
           <CardHeader className="pb-3 border-b border-slate-50">
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="text-sm font-extrabold uppercase tracking-wider text-slate-700">Top Performing Wholesale Products</CardTitle>
-                <p className="text-xs text-slate-400">Products contributing largest revenue share</p>
-              </div>
-              <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-100 font-bold px-2 py-0.5 rounded">
-                Sales leaders
-              </span>
-            </div>
+            <CardTitle className="text-sm font-bold text-slate-700">Best Selling Products</CardTitle>
+            <p className="text-xs text-slate-400">Products that made the most money</p>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-50/50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
-                  <tr>
-                    <th className="px-6 py-3">Product Name</th>
-                    <th className="px-6 py-3 text-center">Quantities Sold</th>
-                    <th className="px-6 py-3 text-right">Revenue Made</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {topSellers.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 flex items-center space-x-3">
-                        <span className="font-mono text-xs font-bold text-slate-400 w-4 inline-block">#{idx + 1}</span>
-                        <span className="font-bold text-slate-800">{item.name}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center rounded-sm bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                          {item.quantity} units
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span className="font-bold text-slate-900 font-mono text-xs">Rs. {item.revenue.toLocaleString()}</span>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {topSellers.length === 0 && (
-                    <tr>
-                      <td colSpan={3} className="px-6 py-8 text-center text-slate-500 text-xs">
-                        No sales orders registered yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* LOW STOCK ACTION SHEET */}
-        <Card className="shadow-xs border border-slate-100 lg:col-span-5">
-          <CardHeader className="pb-3 border-b border-slate-50">
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="text-sm font-extrabold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  Low Stock Reorder List
-                </CardTitle>
-                <p className="text-xs text-slate-400">Items with less than 15 units available</p>
-              </div>
-              <span className="text-[10px] bg-rose-50 border border-rose-100 px-2 text-rose-700 py-0.5 rounded font-black whitespace-nowrap">
-                {lowStockCount} alert(s)
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="divide-y divide-slate-100 max-h-[295px] overflow-y-auto">
-              {products.filter(p => p.stock <= 15).map((p) => (
-                <div key={p.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors group">
+            <div className="divide-y divide-slate-50">
+              {topSellers.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded flex items-center justify-center shrink-0 border ${
-                      p.stock === 0 ? "bg-red-50 border-red-100 text-red-600" : "bg-rose-50 border-rose-100 text-rose-600"
-                    }`}>
-                      <AlertTriangle className="w-4 h-4" />
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-black flex items-center justify-center text-xs shrink-0">
+                      {idx + 1}
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-indigo-600 transition-colors line-clamp-1">{p.name || 'Unnamed Product'}</h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-[10px] text-slate-500 font-mono">{p.sku || p.barcode || p.id.slice(0,6)}</span>
-                        <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 rounded">{p.category || 'Uncategorized'}</span>
-                      </div>
+                      <p className="text-sm font-bold text-slate-800">{item.name}</p>
+                      <p className="text-xs text-slate-400">{item.quantity} units sold</p>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-4 text-right">
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold font-mono tracking-tighter ${
-                      p.stock === 0 ? "bg-red-500 text-white animate-pulse" : "bg-rose-100 text-rose-700 border border-rose-200"
-                    }`}>
-                      {p.stock} Left
-                    </span>
-                  </div>
+                  <p className="font-bold text-slate-900 text-sm font-mono">Rs. {item.revenue.toLocaleString()}</p>
                 </div>
               ))}
-
-              {products.filter(p => p.stock <= 15).length === 0 && (
-                <div className="p-10 text-center text-slate-400 text-xs">
-                  All products satisfy safe stock levels.
+              {topSellers.length === 0 && (
+                <div className="p-10 text-center text-slate-400 text-sm">
+                  <ShoppingBag className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  No sales yet. Make your first sale to see results here.
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
 
+        <Card className="border border-slate-100 shadow-sm lg:col-span-5">
+          <CardHeader className="pb-3 border-b border-slate-50">
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="text-sm font-bold text-rose-700 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" /> Running Low on Stock
+                </CardTitle>
+                <p className="text-xs text-slate-400 mt-0.5">These items need restocking soon</p>
+              </div>
+              <span className="text-[10px] bg-rose-50 border border-rose-100 px-2 text-rose-700 py-0.5 rounded font-bold">
+                {lowStockCount} item{lowStockCount !== 1 ? "s" : ""}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-slate-50 max-h-[280px] overflow-y-auto">
+              {products.filter(p => p.stock <= 15).map((p) => (
+                <div key={p.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">{p.name || "Unnamed Product"}</p>
+                    <p className="text-xs text-slate-400">{p.category || "No category"}</p>
+                  </div>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                    p.stock === 0 ? "bg-red-500 text-white" : "bg-rose-100 text-rose-700"
+                  }`}>
+                    {p.stock === 0 ? "Out of stock" : `${p.stock} left`}
+                  </span>
+                </div>
+              ))}
+              {products.filter(p => p.stock <= 15).length === 0 && (
+                <div className="p-10 text-center text-slate-400 text-sm">
+                  All products have enough stock. 
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
     </div>
   );
 }

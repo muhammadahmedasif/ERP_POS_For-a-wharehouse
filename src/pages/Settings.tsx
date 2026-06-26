@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import imageCompression from 'browser-image-compression';
-import { useTranslation } from 'react-i18next';
+
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
@@ -8,7 +8,7 @@ import { useAppStore } from '../store';
 import { toast } from 'sonner';
 
 export default function Settings() {
-  const { t } = useTranslation();
+  
   const { settings, updateSettings, user } = useAppStore();
   const [localSettings, setLocalSettings] = useState(settings);
   const [isSaving, setIsSaving] = useState(false);
@@ -123,7 +123,7 @@ export default function Settings() {
               <Input 
                 type="number"
                 value={localSettings.taxRate} 
-                onChange={e => setLocalSettings({...localSettings, taxRate: parseFloat(e.target.value) || 0})} 
+                onChange={e => setLocalSettings({...localSettings, taxRate: e.target.value === '' ? 0 : parseFloat(e.target.value)})} 
                 onWheel={(e) => (e.target as HTMLInputElement).blur()}
               />
             </div>
@@ -132,7 +132,7 @@ export default function Settings() {
               <Input 
                 type="number"
                 value={localSettings.defaultLowInventoryThreshold} 
-                onChange={e => setLocalSettings({...localSettings, defaultLowInventoryThreshold: parseInt(e.target.value) || 0})} 
+                onChange={e => setLocalSettings({...localSettings, defaultLowInventoryThreshold: e.target.value === '' ? 0 : parseInt(e.target.value)})} 
                 onWheel={(e) => (e.target as HTMLInputElement).blur()}
               />
             </div>

@@ -8,7 +8,6 @@ import {
   Navigate,
 } from "react-router-dom";
 import { Toaster } from "sonner";
-import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
   Package,
@@ -116,18 +115,17 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
-  const { t } = useTranslation();
   const location = useLocation();
 
   const menuItems = [
-    { name: "Dashboard", icon: LayoutDashboard, path: "/" },
-    { name: t("inventory"), icon: Package, path: "/inventory" },
+    { name: "Home", icon: LayoutDashboard, path: "/" },
+    { name: "Stock", icon: Package, path: "/inventory" },
     { name: "Categories & Brands", icon: Tag, path: "/categories" },
     { name: "Customers", icon: Users, path: "/customers" },
-    { name: t("sales"), icon: ShoppingCart, path: "/sales" },
+    { name: "Sales", icon: ShoppingCart, path: "/sales" },
     { name: "New Sale", icon: PlusCircle, path: "/sales/new" },
     { name: "Top Items", icon: Award, path: "/top-products" },
-    { name: "Reports", icon: FileText, path: "/reports" },
+    { name: "Summary", icon: FileText, path: "/reports" },
     { name: "Settings", icon: SettingsIcon, path: "/settings" },
     { name: "Assistant", icon: Bot, path: "/ai" },
     { name: "Help", icon: HelpCircle, path: "/help" },
@@ -232,9 +230,9 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
   const getPageTitle = () => {
     switch (location.pathname) {
       case "/":
-        return "Dashboard";
+        return "Home";
       case "/inventory":
-        return "Inventory";
+        return "Stock";
       case "/categories":
         return "Categories & Brands";
       case "/customers":
@@ -246,7 +244,7 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
       case "/top-products":
         return "Top Items";
       case "/reports":
-        return "Reports";
+        return "Summary";
       case "/settings":
         return "Settings";
       case "/ai":
@@ -328,6 +326,17 @@ function AppContent() {
     window.addEventListener(AUTH_INVALID_EVENT, logout);
     return () => window.removeEventListener(AUTH_INVALID_EVENT, logout);
   }, [logout]);
+
+  useEffect(() => {
+    const handleAccessDenied = (e: Event) => {
+      const msg = (e as CustomEvent).detail?.message || 'Access denied. You have been logged out.';
+      import('sonner').then(({ toast }) => {
+        toast.error(msg, { duration: 6000 });
+      });
+    };
+    window.addEventListener('auth:access-denied', handleAccessDenied);
+    return () => window.removeEventListener('auth:access-denied', handleAccessDenied);
+  }, []);
 
   useEffect(() => {
     if (user) {

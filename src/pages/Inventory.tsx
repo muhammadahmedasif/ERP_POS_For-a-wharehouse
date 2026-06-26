@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import imageCompression from "browser-image-compression";
 import { ProductImage } from "../components/ProductImage";
-import { useTranslation } from "react-i18next";
+
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { cn } from "../lib/utils";
 import { useAppStore } from "../store";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
+import { toast } from "sonner";
 
 type LookupSource = "supabase" | "open_food_facts" | "open_beauty_facts" | "open_products_facts" | "web_search";
 
@@ -64,6 +65,19 @@ const humanProductType = (type?: string) => {
   }
 };
 
+const formatLastRestock = () => {
+  const now = new Date();
+  return now.toLocaleString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  }).replace(' at ', ' ');
+};
+
 const mergeNames = (...groups: string[][]) => {
   const seen = new Set<string>();
   return groups.flat().filter((name) => {
@@ -92,7 +106,7 @@ const blankForm = (settings: { defaultLowInventoryThreshold: number }, category 
 });
 
 const Inventory = () => {
-  const { t } = useTranslation();
+
   const {
     products,
     fetchProducts,
@@ -444,14 +458,19 @@ const Inventory = () => {
 
     try {
       if (selectedProduct) {
+        const newStock = Number(selectedProduct.stock || 0) + formData.stock;
         await updateProduct(selectedProduct.id, {
-          stock: Number(selectedProduct.stock || 0) + formData.stock,
+          stock: newStock,
           price: formData.price,
           purchasePrice: formData.purchasePrice,
           lowInventoryThreshold: formData.lowInventoryThreshold,
           unitType: formData.unitType,
           imageUrl: formData.imageUrl,
           publicId: formData.publicId,
+          lastRestock: formData.stock > 0 ? formatLastRestock() : selectedProduct.lastRestock,
+          lastRestockAmount: formData.stock > 0 ? formData.stock : selectedProduct.lastRestockAmount,
+          lastLowStockDate: newStock <= (formData.lowInventoryThreshold || 10) ? formatLastRestock() : selectedProduct.lastLowStockDate,
+          lastLowStockAmount: newStock <= (formData.lowInventoryThreshold || 10) ? newStock : selectedProduct.lastLowStockAmount,
         });
       } else {
         const existingByBarcode = findExistingProductByBarcode(formData.barcode);
@@ -465,6 +484,10 @@ const Inventory = () => {
           ...formData,
           name: formData.name.trim(),
           brand: formData.brand || "Unbranded / Generic",
+          lastRestock: formData.stock > 0 ? formatLastRestock() : undefined,
+          lastRestockAmount: formData.stock > 0 ? formData.stock : undefined,
+          lastLowStockDate: formData.stock <= (formData.lowInventoryThreshold || 10) ? formatLastRestock() : undefined,
+          lastLowStockAmount: formData.stock <= (formData.lowInventoryThreshold || 10) ? formData.stock : undefined,
         };
         if (isDuplicateProduct(candidate)) {
           setValidationError("Already existing product with the same name, category, and brand.");
@@ -499,10 +522,15 @@ const Inventory = () => {
         ...formData,
         name: formData.name.trim(),
         brand: formData.brand || "Unbranded / Generic",
-        stock: 0,
-        price: 0,
-        lowInventoryThreshold: settings.defaultLowInventoryThreshold,
+        stock: formData.stock || 0,
+        price: formData.price || 0,
+        purchasePrice: formData.purchasePrice || 0,
+        lowInventoryThreshold: formData.lowInventoryThreshold || settings.defaultLowInventoryThreshold,
         productType: classifyProduct(`${formData.name} ${formData.category} ${formData.brand}`),
+        lastRestock: formData.stock > 0 ? formatLastRestock() : undefined,
+        lastRestockAmount: formData.stock > 0 ? formData.stock : undefined,
+        lastLowStockDate: (formData.stock || 0) <= (formData.lowInventoryThreshold || settings.defaultLowInventoryThreshold) ? formatLastRestock() : undefined,
+        lastLowStockAmount: (formData.stock || 0) <= (formData.lowInventoryThreshold || settings.defaultLowInventoryThreshold) ? (formData.stock || 0) : undefined,
       };
       if (isDuplicateProduct(candidate)) {
         setValidationError("Already existing product with the same name, category, and brand.");
@@ -534,6 +562,13 @@ const Inventory = () => {
         publicId: formData.publicId,
         unitType: formData.unitType,
         lowInventoryThreshold: formData.lowInventoryThreshold,
+        stock: formData.stock,
+        price: formData.price,
+        purchasePrice: formData.purchasePrice,
+        lastRestock: formData.stock > Number(editingProduct.stock || 0) ? formatLastRestock() : editingProduct.lastRestock,
+        lastRestockAmount: formData.stock > Number(editingProduct.stock || 0) ? (formData.stock - Number(editingProduct.stock || 0)) : editingProduct.lastRestockAmount,
+        lastLowStockDate: formData.stock <= (formData.lowInventoryThreshold || 10) ? formatLastRestock() : editingProduct.lastLowStockDate,
+        lastLowStockAmount: formData.stock <= (formData.lowInventoryThreshold || 10) ? formData.stock : editingProduct.lastLowStockAmount,
       });
       await fetchProducts();
       setIsEditOpen(false);
@@ -544,20 +579,32 @@ const Inventory = () => {
   };
 
   const handleDelete = async (product: Product) => {
-    if (!confirm(`Delete ${product.name}?`)) return;
-
-    try {
-      if (product.publicId) {
-        await fetch("/api/delete-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ public_id: product.publicId }),
-        });
-      }
-      await deleteProduct(product.id);
-    } catch (error: any) {
-      alert(error.message || "Failed to delete product.");
-    }
+    toast(`Delete "${product.name}"?`, {
+      description: 'This cannot be undone. The product will be permanently removed.',
+      action: {
+        label: 'Yes, Delete',
+        onClick: async () => {
+          try {
+            if (product.publicId) {
+              await fetch("/api/delete-image", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ public_id: product.publicId }),
+              });
+            }
+            await deleteProduct(product.id);
+            toast.success(`${product.name} deleted successfully.`);
+          } catch (error: any) {
+            toast.error(error.message || "Failed to delete product.");
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {}
+      },
+      duration: 10000,
+    });
   };
 
   const handleInlineAddStock = async (product: Product) => {
@@ -565,13 +612,21 @@ const Inventory = () => {
     if (!Number.isFinite(amount) || amount <= 0) return;
 
     try {
-      await updateProduct(product.id, { stock: Number(product.stock || 0) + amount });
+      const newStock = Number(product.stock || 0) + amount;
+      await updateProduct(product.id, { 
+        stock: newStock,
+        lastRestock: amount > 0 ? formatLastRestock() : product.lastRestock,
+        lastRestockAmount: amount > 0 ? amount : product.lastRestockAmount,
+        lastLowStockDate: newStock <= (product.lowInventoryThreshold || 10) ? formatLastRestock() : product.lastLowStockDate,
+        lastLowStockAmount: newStock <= (product.lowInventoryThreshold || 10) ? newStock : product.lastLowStockAmount,
+      });
       setStockAdditions((prev) => ({ ...prev, [product.id]: "" }));
       await fetchProducts();
       setHighlightedProductId(product.id);
       window.setTimeout(() => setHighlightedProductId(null), 1200);
+      toast.success(`Added ${amount} stock to ${product.name}`);
     } catch (error: any) {
-      alert(error.message || "Failed to add stock.");
+      toast.error(error.message || "Failed to add stock.");
     }
   };
 
@@ -596,7 +651,7 @@ const Inventory = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-lg font-bold text-slate-800">{t("inventory")}</h2>
+        <h2 className="text-lg font-bold text-slate-800">Inventory</h2>
         <div className="flex gap-2 w-full sm:w-auto">
           <Button className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white" onClick={openAddFlow}>
             <PackageSearch className="w-4 h-4 mr-2" />
@@ -614,7 +669,7 @@ const Inventory = () => {
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder={t("search_placeholder")}
+              placeholder="Search..."
               className="pl-9"
               value={listSearchTerm}
               onChange={(e) => setListSearchTerm(e.target.value)}
@@ -622,111 +677,87 @@ const Inventory = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-slate-500">
-                <tr>
-                  <th className="px-6 py-3 font-medium min-w-[250px]">{t("name")}</th>
-                  <th className="px-6 py-3 font-medium">Product ID (SKU) & Barcode</th>
-                  <th className="px-6 py-3 font-medium">{t("category")}</th>
-                  <th className="px-6 py-3 font-medium">Brand</th>
-                  <th className="px-6 py-3 font-medium">{t("stock")}</th>
-                  <th className="px-6 py-3 font-medium">Add Stock</th>
-                  <th className="px-6 py-3 font-medium">{t("price")}</th>
-                  <th className="px-6 py-3 font-medium text-right">{t("actions")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((product) => (
-                  <tr
-                    key={product.id}
-                    className={cn(
-                      "transition-colors duration-500",
-                      highlightedProductId === product.id ? "bg-indigo-100" : "hover:bg-slate-50",
-                    )}
-                  >
-                    <td className="px-6 py-4 font-medium text-slate-900">
-                      <div className="flex items-center gap-3">
-                        <ProductImage imageUrl={product.imageUrl} name={product.name} />
-                        <span className="break-words line-clamp-2" title={product.name}>{product.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500">
-                      <div>{product.sku}</div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-1">{product.barcode || "N/A"}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center rounded-sm bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
-                        {product.category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center rounded-sm bg-purple-50 px-2 py-1 text-xs font-semibold text-purple-700">
-                        {product.brand || "Unbranded"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`font-bold ${product.stock <= (product.lowInventoryThreshold || 10) ? "text-amber-600" : "text-slate-900"}`}>
+          <div className="grid grid-cols-1 gap-3">
+            {filtered.map((product) => (
+              <div
+                key={product.id}
+                className={cn(
+                  "bg-white rounded-xl p-4 border transition-all duration-300 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between",
+                  highlightedProductId === product.id ? "border-indigo-300 bg-indigo-50/30 shadow-md" : "border-slate-100 hover:border-slate-200 hover:shadow-sm"
+                )}
+              >
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <ProductImage imageUrl={product.imageUrl} name={product.name} className="w-14 h-14 rounded-lg shadow-sm shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-800 text-lg truncate" title={product.name}>{product.name}</h3>
+                    <p className="text-sm text-slate-500 truncate mt-0.5">{product.category} {product.brand && product.brand !== 'Unbranded' ? `• ${product.brand}` : ''}</p>
+                    <p className="text-xs text-slate-400 font-mono mt-1">{product.barcode || "No Barcode"}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-between sm:justify-end shrink-0">
+                  
+                  {/* Info Boxes */}
+                  <div className="flex gap-2 text-left">
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 min-w-[120px]">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Last Restock</p>
+                      <p className="text-xs font-semibold text-slate-700 truncate">{product.lastRestock || "N/A"}</p>
+                      {product.lastRestockAmount ? (
+                        <p className="text-[10px] text-emerald-600 font-bold mt-0.5">+{product.lastRestockAmount} units</p>
+                      ) : null}
+                    </div>
+                    <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 min-w-[120px]">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Last Low Stock</p>
+                      <p className="text-xs font-semibold text-slate-700 truncate">{product.lastLowStockDate || "N/A"}</p>
+                      {product.lastLowStockAmount ? (
+                        <p className="text-[10px] text-rose-600 font-bold mt-0.5">Dropped to {product.lastLowStockAmount}</p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Stock</p>
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "font-black text-xl",
+                        product.stock <= (product.lowInventoryThreshold || 10) ? "text-rose-600" : "text-emerald-600"
+                      )}>
                         {product.stock}
                       </span>
-                      {product.unitType && <span className="ml-1 text-xs text-slate-400">{product.unitType}</span>}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 min-w-[150px]">
-                        <Input
-                          type="number"
-                          min="1"
-                          value={stockAdditions[product.id] || ""}
-                          onChange={(e) => setStockAdditions((prev) => ({ ...prev, [product.id]: e.target.value }))}
-                          onKeyDown={(e) => {
-                            if (["e", "E", "+", "-"].includes(e.key)) e.preventDefault();
-                            if (e.key === "Enter") void handleInlineAddStock(product);
-                          }}
-                          onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                          className="h-8 w-20 text-xs"
-                          placeholder="Qty"
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2 text-xs"
-                          onClick={() => void handleInlineAddStock(product)}
-                          disabled={!stockAdditions[product.id] || Number(stockAdditions[product.id]) <= 0}
-                        >
-                          <Plus className="w-3.5 h-3.5 mr-1" />
-                          Add
-                        </Button>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-medium">Rs. {product.price.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => openEditFlow(product)}
-                        className="text-slate-400 hover:text-indigo-600 mr-3 transition-colors"
-                        aria-label={`Edit ${product.name}`}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => void handleDelete(product)}
-                        className="text-slate-400 hover:text-red-600 transition-colors"
-                        aria-label={`Delete ${product.name}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
-                      No products found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      <span className="text-xs text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded-md">{product.unitType || 'pcs'}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-right ml-4">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Price</p>
+                    <p className="font-bold text-slate-800 text-lg">Rs. {product.price.toLocaleString()}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2 ml-4">
+                    <button
+                      onClick={() => openEditFlow(product)}
+                      className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                      aria-label={`Edit ${product.name}`}
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => void handleDelete(product)}
+                      className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+                      aria-label={`Delete ${product.name}`}
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div className="text-center py-12 text-slate-400 font-medium">
+                <PackageSearch className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                <p>No products found.</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -932,7 +963,7 @@ const Inventory = () => {
                   <Input
                     type="number"
                     value={formData.stock || ""}
-                    onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value === '' ? 0 : parseInt(e.target.value) })}
                     onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
@@ -1073,6 +1104,48 @@ const Inventory = () => {
                     value={formData.barcode}
                     onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                     placeholder="Optional barcode"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Initial Stock</label>
+                  <Input
+                    type="number"
+                    value={formData.stock || ""}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value === '' ? 0 : parseInt(e.target.value) })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Selling Price</label>
+                  <Input
+                    type="number"
+                    value={formData.price || ""}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price Optional</label>
+                  <Input
+                    type="number"
+                    value={formData.purchasePrice || ""}
+                    onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase">Low Stock Alert</label>
+                  <Input
+                    type="number"
+                    value={formData.lowInventoryThreshold || ""}
+                    onChange={(e) => setFormData({ ...formData, lowInventoryThreshold: e.target.value === '' ? 0 : parseInt(e.target.value) })}
+                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
                 </div>
               </div>
@@ -1218,7 +1291,7 @@ const Inventory = () => {
                   <Input
                     type="number"
                     value={formData.stock || ""}
-                    onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value === '' ? 0 : parseInt(e.target.value) })}
                     onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
@@ -1228,7 +1301,7 @@ const Inventory = () => {
                   <Input
                     type="number"
                     value={formData.price || ""}
-                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
                     onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
@@ -1238,7 +1311,7 @@ const Inventory = () => {
                   <Input
                     type="number"
                     value={formData.purchasePrice || ""}
-                    onChange={(e) => setFormData({ ...formData, purchasePrice: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
                     onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
@@ -1248,7 +1321,7 @@ const Inventory = () => {
                   <Input
                     type="number"
                     value={formData.lowInventoryThreshold || ""}
-                    onChange={(e) => setFormData({ ...formData, lowInventoryThreshold: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => setFormData({ ...formData, lowInventoryThreshold: e.target.value === '' ? 0 : parseInt(e.target.value) })}
                     onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+
 import { useAppStore } from "../store";
 import { Customer, Product, Sale } from "../types";
+import { toast } from 'sonner';
 import {
   Card,
   CardContent,
@@ -33,7 +34,7 @@ import {
 import { format } from "date-fns";
 
 export default function Customers() {
-  const { t } = useTranslation();
+  
   const {
     customers,
     fetchCustomers,
@@ -92,7 +93,7 @@ export default function Customers() {
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
-      alert("Please enter customer name");
+      toast.error('Please enter a customer name.');
       return;
     }
     const tot = parseFloat(formOpenBalance) || 0;
@@ -110,7 +111,7 @@ export default function Customers() {
       setShowAddModal(false);
       fetchCustomers();
     } catch (e: any) {
-      alert(e.message || "Failed to add customer");
+      toast.error(e.message || 'Failed to add customer.');
     }
   };
 
@@ -130,7 +131,7 @@ export default function Customers() {
     e.preventDefault();
     if (!editingCustomer) return;
     if (!formName.trim()) {
-      alert("Please enter customer name");
+      toast.error('Please enter a customer name.');
       return;
     }
 
@@ -150,23 +151,34 @@ export default function Customers() {
       setEditingCustomer(null);
       fetchCustomers();
     } catch (e: any) {
-      alert(e.message || "Failed to update customer");
+      toast.error(e.message || 'Failed to update customer.');
     }
   };
 
   const handleDelete = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Are you sure you want to remove customer "${name}"?`)) {
-      try {
-        await deleteCustomer(id);
-        if (selectedCustomerId === id) {
-          setSelectedCustomerId(null);
+    toast(`Remove customer "${name}"?`, {
+      action: {
+        label: 'Yes, Remove',
+        onClick: async () => {
+          try {
+            await deleteCustomer(id);
+            if (selectedCustomerId === id) {
+              setSelectedCustomerId(null);
+            }
+            fetchCustomers();
+            toast.success(`Customer "${name}" removed.`);
+          } catch (err: any) {
+            toast.error('Failed to delete customer.');
+          }
         }
-        fetchCustomers();
-      } catch (e: any) {
-        alert("Failed to delete customer");
-      }
-    }
+      },
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {}
+      },
+      duration: 10000,
+    });
   };
 
   const handleOpenReceivePayment = (customer: Customer, e: React.MouseEvent) => {
@@ -182,7 +194,7 @@ export default function Customers() {
     if (!editingCustomer) return;
     const amount = parseFloat(paymentAmount) || 0;
     if (amount <= 0) {
-      alert("Please enter a valid payment sum");
+      toast.error('Please enter a valid payment amount.');
       return;
     }
 
@@ -212,7 +224,7 @@ export default function Customers() {
       // Update selected profile state if in profile view
       setEditingCustomer(null);
     } catch (e: any) {
-      alert(e.message || "Failed to record payment");
+      toast.error(e.message || 'Failed to record payment.');
     }
   };
 
@@ -422,21 +434,21 @@ export default function Customers() {
                     onClick={() => setActiveTab("orders")}
                     className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-colors ${
                       activeTab === "orders" 
-                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-250' 
+                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' 
                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                     }`}
                   >
-                    <FileText className="w-4 h-4" /> Purchased Bills / Bill History ({customerSales.length})
+                    <FileText className="w-4 h-4" /> Purchases ({customerSales.length})
                   </button>
                   <button 
                     onClick={() => setActiveTab("payments")}
                     className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-md transition-colors ${
                       activeTab === "payments" 
-                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-250' 
+                        ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' 
                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                     }`}
                   >
-                    <History className="w-4 h-4" /> Payment History ({selectedCustomer.payments?.length || 0})
+                    <History className="w-4 h-4" /> Payments Made ({selectedCustomer.payments?.length || 0})
                   </button>
                 </div>
               </CardHeader>
@@ -510,31 +522,25 @@ export default function Customers() {
                   </div>
                 )}
 
-                {/* TAB 2: PAYMENT HISTORY JOURNALS */}
                 {activeTab === "payments" && (
-                  <div className="space-y-6">
+                  <div className="space-y-3">
                     {!selectedCustomer.payments || selectedCustomer.payments.length === 0 ? (
                       <div className="text-center py-12 bg-slate-50 border border-slate-100 rounded-xl">
-                        <History className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <h4 className="font-bold text-slate-700">No Payments Recorded</h4>
+                        <History className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                        <h4 className="font-bold text-slate-700">No Payments Yet</h4>
                         <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
-                          No payments have been recorded in this customer's account yet.
+                          Record a payment from this customer when they pay their dues.
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-3.5">
+                      <div className="space-y-2">
                         {selectedCustomer.payments.map((p) => (
-                          <div key={p.id} className="flex justify-between items-start border border-slate-200 bg-slate-50/30 hover:bg-slate-50/60 p-4 rounded-xl shadow-sm transition-colors">
-                            <div className="space-y-1">
-                              <span className="font-mono text-[10px] font-bold text-indigo-500 uppercase block">Receipt: {p.id}</span>
-                              <p className="text-xs text-slate-700 font-semibold">{p.notes || "Payment received entry"}</p>
-                              <span className="text-[10px] text-slate-400 block">{format(new Date(p.date), "PPP - p")}</span>
+                          <div key={p.id} className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+                            <div>
+                              <p className="text-sm font-bold text-slate-800">{p.notes || "Payment received"}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">{format(new Date(p.date), "dd MMM yyyy, h:mm a")}</p>
                             </div>
-                            <div className="text-right">
-                              <span className="text-sm font-black font-mono text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1 rounded inline-block">
-                                + Rs. {p.amount.toLocaleString()}
-                              </span>
-                            </div>
+                            <span className="text-base font-black text-emerald-700 font-mono">+ Rs. {p.amount.toLocaleString()}</span>
                           </div>
                         ))}
                       </div>
@@ -568,93 +574,87 @@ export default function Customers() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left border-collapse">
-                  <thead className="bg-[#1e293b] text-slate-150 border-b border-slate-200 text-xs">
-                    <tr>
-                      <th className="px-6 py-4 font-bold text-slate-200">Customer Name</th>
-                      <th className="px-6 py-4 font-bold text-slate-200">Contact Number</th>
-                      <th className="px-6 py-4 font-bold text-slate-200">Shop/Home Address</th>
-                      <th className="px-6 py-4 font-bold text-right text-slate-200">Total Purchase Amount</th>
-                      <th className="px-6 py-4 font-bold text-right text-slate-200">Remaining Balance/Advance Status</th>
-                      <th className="px-6 py-4 font-bold text-center text-slate-200 w-44">Operations</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-600 font-medium select-none">
-                    {filteredCustomers.map((c) => {
-                      const outstanding = c.totalAmount - c.paidAmount;
-                      const hasOutstanding = outstanding > 0;
-                      return (
-                        <tr 
-                          key={c.id} 
-                          onClick={() => setSelectedCustomerId(c.id)}
-                          className="hover:bg-indigo-50/10 cursor-pointer align-middle transition-colors group"
-                        >
-                          <td className="px-6 py-4.5">
-                            <div className="font-bold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
-                              {c.name}
-                            </div>
-                            <span className="text-[10px] font-mono text-slate-400 block mt-0.5">ID: {c.id}</span>
-                          </td>
-                          <td className="px-6 py-4.5 font-mono text-xs text-slate-700">
-                            {c.phone || "No Phone Number"}
-                          </td>
-                          <td className="px-6 py-4.5 text-xs text-slate-600 truncate max-w-sm">
-                            {c.address || "No Address Added"}
-                          </td>
-                          <td className="px-6 py-4.5 text-right font-mono text-xs text-slate-800">
-                            Bills: Rs. {c.totalAmount.toLocaleString()}
-                          </td>
-                           <td className="px-6 py-4.5 text-right font-mono font-bold text-sm">
+              <div className="grid grid-cols-1 gap-3 p-4">
+                {filteredCustomers.map((c) => {
+                  const outstanding = c.totalAmount - c.paidAmount;
+                  const hasOutstanding = outstanding > 0;
+                  return (
+                    <div 
+                      key={c.id} 
+                      onClick={() => setSelectedCustomerId(c.id)}
+                      className="bg-white rounded-xl p-4 border border-slate-100 hover:border-slate-200 hover:shadow-sm transition-all duration-300 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-slate-600 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                          <User className="w-6 h-6" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-bold text-slate-800 text-lg truncate group-hover:text-indigo-600 transition-colors">
+                            {c.name}
+                          </h3>
+                          <p className="text-sm text-slate-500 truncate mt-0.5">{c.phone || "No Phone Number"}</p>
+                          <p className="text-xs text-slate-400 mt-1 truncate" title={c.address}>{c.address || "No Address Added"}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end shrink-0">
+                        <div className="text-left sm:text-right">
+                          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Status</p>
+                          <div className="mt-1">
                             {outstanding > 0 ? (
-                              <span className="text-red-600 bg-red-50 border border-red-100 px-2.5 py-0.5 rounded-full inline-block">
-                                Rs. {outstanding.toLocaleString()} (Owed)
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
+                                Owes Rs. {outstanding.toLocaleString()}
                               </span>
                             ) : outstanding < 0 ? (
-                              <span className="text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-full inline-block text-xs">
-                                Advance Credit: Rs. {Math.abs(outstanding).toLocaleString()}
+                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                                Adv: Rs. {Math.abs(outstanding).toLocaleString()}
                               </span>
                             ) : (
-                              <span className="text-xs text-slate-500 bg-slate-50 border border-slate-100 px-2.5 py-0.5 rounded-full inline-block">
+                              <span className="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
                                 Cleared
                               </span>
                             )}
-                          </td>
-                          <td className="px-6 py-4.5 text-center flex items-center justify-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={(e) => handleOpenReceivePayment(c, e)}
-                              className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md transition-colors"
-                              title={outstanding > 0 ? "Clear Ledger Payment" : "Record Advance Payment"}
-                            >
-                              <DollarSign className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={(e) => handleOpenEdit(c, e)}
-                              className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md transition-colors"
-                              title="Modify Profile"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={(e) => handleDelete(c.id, c.name, e)}
-                              className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md transition-colors"
-                              title="Delete Account"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {filteredCustomers.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
-                          No regular customers registered matching search parameters.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                          </div>
+                        </div>
+
+                        <div className="text-right ml-4">
+                          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Purchases</p>
+                          <p className="font-bold text-slate-800 text-lg">Rs. {c.totalAmount.toLocaleString()}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => handleOpenReceivePayment(c, e)}
+                            className="p-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors"
+                            title={outstanding > 0 ? "Clear Ledger Payment" : "Record Advance Payment"}
+                          >
+                            <DollarSign className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={(e) => handleOpenEdit(c, e)}
+                            className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Modify Profile"
+                          >
+                            <Edit className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDelete(c.id, c.name, e)}
+                            className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Delete Account"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredCustomers.length === 0 && (
+                  <div className="text-center py-12 text-slate-400 font-medium">
+                    <User className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p>No regular customers registered matching search parameters.</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
+
 import { useAppStore } from "../store";
+import { toast } from 'sonner';
 import {
   Card,
   CardContent,
@@ -45,7 +46,7 @@ interface Message {
 }
 
 const AIAssistant = () => {
-  const { t } = useTranslation();
+  
   const { products, fetchProducts, fetchCustomers } = useAppStore();
   
   const [messages, setMessages] = useState<Message[]>([
@@ -135,7 +136,7 @@ const AIAssistant = () => {
   // Trigger microphone push to talk
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      alert("Speech recognition is not supported or initialized.");
+      toast.error('Speech recognition is not supported or not initialized in your browser.');
       return;
     }
 

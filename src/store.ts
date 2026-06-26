@@ -38,8 +38,8 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
           customers: [],
         });
       });
-      // Show the error message via alert so user sees it before being kicked out
-      alert(message);
+      // Dispatch a CustomEvent so App.tsx can display a toast before kicking out
+      window.dispatchEvent(new CustomEvent("auth:access-denied", { detail: { message } }));
     }
 
     throw new Error(message);
@@ -49,7 +49,7 @@ async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 interface AppState {
-  settings: { storeName: string; taxRate: number; sellerName: string; profilePictureUrl: string; profilePicturePublicId: string; billPrinter: string; defaultLowInventoryThreshold: number; currency: string };
+  settings: { storeName: string; taxRate: number; sellerName: string; profilePictureUrl: string; profilePicturePublicId: string; billPrinter: string; defaultLowInventoryThreshold: number; };
   fetchSettings: () => Promise<void>;
   updateSettings: (settings: any) => Promise<void>;
   products: Product[];
@@ -118,11 +118,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       categories: [],
       brands: [],
       customers: [],
-      settings: { storeName: 'StockPilot', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
+      settings: { storeName: 'StockPilot', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10 },
     });
   },
 
-  settings: { storeName: 'StockPilot', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10, currency: 'USD' },
+  settings: { storeName: 'StockPilot', taxRate: 5, sellerName: '', profilePictureUrl: '', profilePicturePublicId: '', billPrinter: 'Thermal Printer 80mm', defaultLowInventoryThreshold: 10 },
   fetchSettings: async () => {
     const settings = await apiRequest<AppState["settings"]>("/api/settings");
     set({ settings });

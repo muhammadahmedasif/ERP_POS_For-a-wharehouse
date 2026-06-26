@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
+
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { ProductImage } from '../components/ProductImage';
 import { Search, Plus, Filter, Download, ArrowLeft, Trash2, Printer, Users, User, TrendingUp, DollarSign, Wallet, FileText, CheckCircle, AlertTriangle, Sparkles } from 'lucide-react';
 import { Product } from '../types';
+import { toast } from 'sonner';
 
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
 import { printReceipt } from '../lib/printReceipt';
 import { useAppStore } from '../store';
+import { cn } from '../lib/utils';
 
 const formatSaleDateTime = (dateString: string) => {
   try {
@@ -18,30 +20,28 @@ const formatSaleDateTime = (dateString: string) => {
     if (isNaN(d.getTime())) {
       return {
         date: dateString,
-        day: 'Thursday',
-        time: '12:00 PM'
+        day: '',
+        time: ''
       };
     }
-    const dateFormatted = d.toLocaleDateString("en-US", { year: 'numeric', month: 'short', day: 'numeric' });
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const dayName = days[d.getDay()];
+    const fullString = d.toLocaleDateString("en-US", { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     const timeFormatted = d.toLocaleTimeString("en-US", { hour: 'numeric', minute: '2-digit', hour12: true });
     return {
-      date: dateFormatted,
-      day: dayName,
+      date: fullString,
+      day: '',
       time: timeFormatted
     };
   } catch (e) {
     return {
       date: dateString,
-      day: 'Thursday',
-      time: '12:00 PM'
+      day: '',
+      time: ''
     };
   }
 };
 
 export default function Sales({ initialView = 'list' }: { initialView?: 'list' | 'new' }) {
-  const { t } = useTranslation();
+  
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -146,7 +146,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     const newQty = existing ? existing.quantity + 1 : 1;
 
     if (newQty > product.stock) {
-      alert(`Cannot add ${product.name}. Only ${product.stock} items available in stock.`);
+      toast.warning(`Cannot add ${product.name}. Only ${product.stock} items available in stock.`);
       return;
     }
 
@@ -179,7 +179,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     if (product) {
       addToCart(product);
     } else {
-      alert('Product not found! Please check the barcode or name.');
+      toast.error('Product not found! Please check the barcode or name.');
     }
   };
 
@@ -219,7 +219,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     const val = isNaN(qty) ? 0 : qty;
     const product = products.find(p => p.id === id);
     if (product && val > product.stock) {
-      alert(`Only ${product.stock} items available in stock for ${product.name}.`);
+      toast.warning(`Only ${product.stock} items available in stock for ${product.name}.`);
       setCart(cart.map(c => c.id === id ? { ...c, quantity: product.stock } : c));
       return;
     }
@@ -257,7 +257,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
 
     const invalidItem = cart.find(c => !c.quantity || c.quantity < 1);
     if (invalidItem) {
-      alert(`Please enter a valid quantity of 1 or more for article "${invalidItem.name}" before processing the sale.`);
+      toast.error(`Please enter a valid quantity of 1 or more for "${invalidItem.name}" before processing the sale.`);
       return;
     }
 
@@ -265,7 +265,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     for (const cartItem of cart) {
       const latestProduct = products.find(p => p.id === cartItem.id);
       if (latestProduct && cartItem.quantity > latestProduct.stock) {
-        alert(`Cannot process sale: "${cartItem.name}" has only ${latestProduct.stock} in stock but ${cartItem.quantity} requested.`);
+        toast.error(`Cannot process sale: "${cartItem.name}" has only ${latestProduct.stock} in stock but ${cartItem.quantity} requested.`);
         return;
       }
     }
@@ -274,7 +274,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     const customerId = isWalkIn ? null : (selectedCustomerId || null);
 
     if (!isWalkIn && !customerId) {
-      alert("Please select a regular customer from the dropdown list, or switch to Walk-in customer mode.");
+      toast.error('Please select a regular customer from the dropdown, or switch to Walk-in customer mode.');
       return;
     }
 
@@ -301,8 +301,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
       discountAmount,
       discountType: isRegularMode && discountValue ? discountType : undefined,
       discountValue: isRegularMode && discountValue ? discountValue : undefined,
-      sellerName: sellerNameValue,
-      creditDeducted
+      sellerName: sellerNameValue
     };
 
     const res = await fetch('/api/sales', {
@@ -341,19 +340,26 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
   };
 
   const handleDeleteSale = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this sale? This will revert the inventory values.')) {
-      return;
-    }
-    const res = await fetch(`/api/sales/${id}`, {
-      method: 'DELETE',
+    toast('Delete this sale? Inventory will be restocked.', {
+      action: {
+        label: 'Yes, Delete',
+        onClick: async () => {
+          const res = await fetch(`/api/sales/${id}`, { method: 'DELETE' });
+          if (res.ok) {
+            toast.success('Sale deleted and products restocked successfully.');
+            fetchSales();
+            fetchProducts();
+          } else {
+            toast.error('Failed to delete sale. Please try again.');
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {}
+      },
+      duration: 10000,
     });
-    if (res.ok) {
-      alert('Sale deleted and products restocked successfully.');
-      fetchSales();
-      fetchProducts();
-    } else {
-      alert('Failed to delete sale.');
-    }
   };
 
   if (view === 'new') {
@@ -829,46 +835,31 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
         </div>
       </div>
 
-      {/* Metrics Cards Grid */}
-      <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
-        <Card className="border border-indigo-100 shadow-xs bg-gradient-to-br from-white to-indigo-50/25">
-          <CardContent className="p-5 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Total Stores Sales (All)</span>
-              <span className="text-2xl font-black text-indigo-700 font-mono">Rs. {overallTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <span className="text-[11px] text-slate-500 font-semibold block">{overallCount} Invoices Registered</span>
-            </div>
-            <div className="p-3 bg-indigo-50/80 text-indigo-600 rounded-full">
-              <TrendingUp className="w-5 h-5 text-indigo-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-slate-150 shadow-xs bg-gradient-to-br from-white to-slate-50/25">
-          <CardContent className="p-5 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block">Walk-In Customer Sales</span>
-              <span className="text-2xl font-black text-slate-800 font-mono">Rs. {walkinTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <span className="text-[11px] text-slate-500 font-semibold block">{walkinCount} Cash Transactions</span>
-            </div>
-            <div className="p-3 bg-slate-50 text-slate-650 rounded-full">
-              <User className="w-5 h-5 text-slate-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-amber-100 shadow-xs bg-gradient-to-br from-white to-amber-50/15">
-          <CardContent className="p-5 flex items-center justify-between">
-            <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase block">Regular Customer Billing</span>
-              <span className="text-2xl font-black text-amber-700 font-mono">Rs. {regularTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              <span className="text-[11px] text-slate-500 font-semibold block">{regularCount} Account Invoices</span>
-            </div>
-            <div className="p-3 bg-amber-50 text-amber-600 rounded-full">
-              <Users className="w-5 h-5 text-amber-600" />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Minimal Metrics Summary */}
+      <div className="flex flex-wrap items-center gap-4 bg-slate-50 border border-slate-100 p-3 rounded-lg">
+        <div className="flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-indigo-600" />
+          <div className="text-sm">
+            <span className="text-slate-500">Total Sales:</span>
+            <span className="ml-1.5 font-bold text-indigo-700 font-mono">Rs. {overallTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+        <div className="w-px h-4 bg-slate-200 hidden sm:block"></div>
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-slate-500" />
+          <div className="text-sm">
+            <span className="text-slate-500">Walk-in:</span>
+            <span className="ml-1.5 font-bold text-slate-700 font-mono">Rs. {walkinTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+        <div className="w-px h-4 bg-slate-200 hidden sm:block"></div>
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-amber-600" />
+          <div className="text-sm">
+            <span className="text-slate-500">Regular:</span>
+            <span className="ml-1.5 font-bold text-amber-700 font-mono">Rs. {regularTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        </div>
       </div>
 
       {/* Segmented Filter Sections for Walkin and Regular Customers */}
@@ -923,210 +914,110 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50/80 text-slate-500 border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-3.5 font-bold text-slate-600 uppercase tracking-wider text-xs">Bill Details</th>
-                  <th className="px-6 py-3.5 font-bold text-slate-600 uppercase tracking-wider text-xs">Customer Profile / Type</th>
-                  <th className="px-6 py-3.5 font-bold text-slate-600 uppercase tracking-wider text-xs">Products Sold</th>
-                  <th className="px-6 py-3.5 font-bold text-slate-600 uppercase tracking-wider text-right text-xs">Bill & Ledger Status</th>
-                  <th className="px-6 py-3.5 font-bold w-24 text-center text-slate-600 uppercase tracking-wider text-xs">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {filteredSales.map((sale) => {
-                  const dateTime = formatSaleDateTime(sale.date);
+          <div className="grid grid-cols-1 gap-3 p-4">
+            {filteredSales.map((sale) => {
+              const dateTime = formatSaleDateTime(sale.date);
+              const client = sale.customerId ? customers.find(c => c.id === sale.customerId) : null;
+              const outstandingBalance = sale.customerId ? Math.max(0, sale.total - (sale.amountPaid || 0) - (sale.creditDeducted || 0)) : 0;
+              const printPayload = { ...sale, customerName: client ? client.name : null };
+              const isAISale = (sale.sellerName || '').toLowerCase().includes('ai voice assistant');
+              const displaySellerName = isAISale ? (sale.sellerName || '').replace(/AI Voice Assistant on behalf of /i, '').replace(/AI Voice Assistant/i, 'AI').trim() || 'AI' : (sale.sellerName || 'Admin');
+              
+              const itemSummary = sale.items && sale.items.length > 0
+                ? sale.items.map((i: any) => {
+                    const p = products.find(prod => prod.id === i.productId);
+                    return `${i.quantity}x ${p ? p.name : 'Product'}`;
+                  }).join(', ')
+                : 'No items';
 
-                  // Extract matching regular customer details
-                  const client = sale.customerId
-                    ? customers.find(c => c.id === sale.customerId)
-                    : null;
-
-                  const outstandingBalance = sale.customerId
-                    ? Math.max(0, sale.total - (sale.amountPaid || 0) - (sale.creditDeducted || 0))
-                    : 0;
-
-                  // Generate custom parameters for printable ticket
-                  const printPayload = {
-                    ...sale,
-                    customerName: client ? client.name : null
-                  };
-
-                  return (() => {
-                    const isAISale = (sale.sellerName || '').toLowerCase().includes('ai voice assistant');
-                    const displaySellerName = isAISale
-                      ? (sale.sellerName || '').replace(/AI Voice Assistant on behalf of /i, '').replace(/AI Voice Assistant/i, 'AI').trim() || 'AI'
-                      : (sale.sellerName || 'Admin');
-                    return (
-                      <tr key={sale.id} className={`hover:bg-slate-50/50 transition-colors align-top ${isAISale ? 'bg-violet-50/20' : ''}`}>
-                        <td className="px-6 py-4 space-y-1">
-                          <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-100/40 px-2 py-0.5 rounded block w-fit">
-                            {sale.id}
-                          </span>
-                          {isAISale ? (
-                            <div className="text-[11px] text-violet-600 font-bold flex items-center gap-1.5 mt-2">
-                              <Sparkles className="w-3.5 h-3.5 text-violet-500" />
-                              AI Assistant Sale
-                            </div>
-                          ) : (
-                            <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1.5 mt-2">
-                              <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                              Authenticated Invoice
-                            </div>
-                          )}
-                          <div className="mt-2 text-xs text-slate-700 font-medium flex items-center gap-1.5 pt-2 border-t border-slate-100">
-                            <User className="w-3.5 h-3.5 text-indigo-500" />
-                            <span className="font-bold">{displaySellerName}</span>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4 space-y-2">
-                          {client ? (
-                            <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1.5 font-bold text-xs text-amber-700 bg-amber-50 border border-amber-100 px-2.5 py-1 rounded-full">
-                                <Users className="w-3.5 h-3.5 text-amber-500" />
-                                {client.name}
+              return (
+                <div key={sale.id} className={cn(
+                  "bg-white rounded-xl p-4 border transition-all duration-300 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between shadow-sm hover:shadow-md",
+                  isAISale ? "border-violet-200 bg-violet-50/10" : "border-slate-100"
+                )}>
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className={cn(
+                      "w-12 h-12 rounded-full flex items-center justify-center shrink-0",
+                      client ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-600"
+                    )}>
+                      {client ? <Users className="w-6 h-6" /> : <User className="w-6 h-6" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-slate-800 text-lg truncate">
+                        {client ? client.name : "Walk-in Customer"}
+                      </h3>
+                      <p className="text-sm text-slate-500 truncate mt-0.5">{dateTime.date} at {dateTime.time}</p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {sale.items && sale.items.length > 0 ? (
+                          sale.items.map((i: any, idx: number) => {
+                            const p = products.find(prod => prod.id === i.productId);
+                            return (
+                              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                {i.quantity}x {p ? p.name : 'Product'}
                               </span>
-                              <div className="text-xs font-medium text-slate-500 font-mono">
-                                Phone: {client.phone || "No Contact"}
-                              </div>
-                              <div className="text-[10px] text-slate-400 font-medium">
-                                Registered wholesale regular client
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1.5 font-bold text-xs text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full">
-                                <User className="w-3.5 h-3.5 text-slate-400" />
-                                Walk-in Customer
-                              </span>
-                              <div className="text-[10px] text-slate-400 font-medium">
-                                Instant store trade / No ledger account
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="pt-1.5 border-t border-slate-100/50 space-y-1">
-                            <div className="font-semibold text-slate-800 text-xs">{dateTime.day}</div>
-                            <div className="text-[11px] font-mono text-slate-400">{dateTime.date} @ {dateTime.time}</div>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          {sale.items && sale.items.length > 0 ? (
-                            <div className="bg-slate-50/80 p-3 rounded-lg border border-slate-100 max-w-md shadow-xs">
-                              <table className="w-full text-[11px] text-left border-collapse">
-                                <thead>
-                                  <tr className="border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                                    <th className="pb-1 text-left">Product Name</th>
-                                    <th className="pb-1 text-center w-12">Qty</th>
-                                    <th className="pb-1 text-right w-24">Unit Price</th>
-                                    <th className="pb-1 text-right w-28">Total</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-150">
-                                  {sale.items.map((item: any, idx: number) => {
-                                    const p = products.find(prod => prod.id === item.productId);
-                                    const prodName = p ? p.name : `Product #${item.productId}`;
-                                    const effectivePrice = item.price - (item.perPieceDiscount || 0);
-                                    return (
-                                      <tr key={idx} className="text-slate-600">
-                                        <td className="py-1.5 pr-2 font-medium text-slate-800 flex items-center gap-2">
-                                          <ProductImage imageUrl={p?.imageUrl} name={prodName} className="w-8 h-8" />
-                                          <div>
-                                            <div>{prodName}</div>
-                                            {item.perPieceDiscount > 0 && <div className="text-[9px] text-slate-400 font-normal mt-0.5">(Disc: Rs. {item.perPieceDiscount}/pc)</div>}
-                                          </div>
-                                        </td>
-                                        <td className="py-1.5 text-center text-slate-500 font-bold font-mono">{item.quantity}</td>
-                                        <td className="py-1.5 text-right text-slate-400 font-mono">Rs. {effectivePrice.toFixed(2)}</td>
-                                        <td className="py-1.5 text-right font-bold text-slate-700 font-mono">Rs. {(item.quantity * effectivePrice).toFixed(2)}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 text-xs italic">No items stored</span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4 text-right space-y-1.5">
-                          <div>
-                            <span className="text-slate-400 text-[11px] font-medium block">Bill Total</span>
-                            <span className="font-extrabold text-sm text-slate-900 font-mono">Rs. {sale.total.toFixed(2)}</span>
-                            {sale.discountAmount && sale.discountAmount > 0 && (
-                              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded block w-fit ml-auto mt-0.5 font-sans">
-                                Disc: Rs. {parseFloat(sale.discountAmount).toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-
-                          {sale.customerId ? (
-                            <div className="space-y-1 border-t border-slate-100 pt-1.5 align-right text-right">
-                              {sale.creditDeducted && sale.creditDeducted > 0 ? (
-                                <div className="text-[11px] font-medium text-slate-500">
-                                  Paid via Advance Credit: <span className="font-bold text-indigo-600 font-mono">Rs. {parseFloat(sale.creditDeducted).toFixed(2)}</span>
-                                </div>
-                              ) : null}
-                              <div className="text-[11px] font-medium text-slate-500">
-                                Cash Received: <span className="font-bold text-emerald-600 font-mono">Rs. {(sale.amountPaid || 0).toFixed(2)}</span>
-                              </div>
-                              {outstandingBalance > 0 ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
-                                  Unpaid Balance: Rs. {outstandingBalance.toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                                  <CheckCircle className="w-2.5 h-2.5" /> All paid
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="pt-1.5">
-                              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded">
-                                <Wallet className="w-3 h-3 text-emerald-600" /> Fully Paid in Cash
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-center space-x-2.5">
-                            <button
-                              onClick={() => printReceipt(printPayload, products, settings)}
-                              className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-md transition-colors"
-                              title="Print Invoice"
-                            >
-                              <Printer className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSale(sale.id)}
-                              className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-md transition-colors"
-                              title="Delete Sale"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })();
-                })}
-                {filteredSales.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-16 text-center text-slate-400">
-                      <div className="max-w-sm mx-auto space-y-2">
-                        <p className="font-bold text-slate-500">No transactions recorded</p>
-                        <p className="text-xs text-slate-400">No invoices matched the path, search queries, or selected customer category.</p>
+                            );
+                          })
+                        ) : (
+                          <span className="text-xs text-slate-400">No items</span>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      {isAISale && (
+                        <div className="mt-1.5 inline-flex items-center gap-1 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide">
+                          <Sparkles className="w-3 h-3" /> AI Assisted
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end shrink-0">
+                    <div className="text-left sm:text-right">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total</p>
+                      <p className="font-black text-xl text-slate-900">Rs. {sale.total.toFixed(2)}</p>
+                      <div className="mt-1">
+                        {sale.customerId ? (
+                          outstandingBalance > 0 ? (
+                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
+                              Owes: Rs. {outstandingBalance.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                              Fully Paid
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                            Cash Paid
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-4">
+                      <button
+                        onClick={() => printReceipt(printPayload, products, settings)}
+                        className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                        title="Print Invoice"
+                      >
+                        <Printer className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSale(sale.id)}
+                        className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+                        title="Delete Sale"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredSales.length === 0 && (
+              <div className="text-center py-12 text-slate-400 font-medium">
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                <p>No transactions recorded</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

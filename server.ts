@@ -52,16 +52,24 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configure Nodemailer
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false, // true for 465, false for other ports
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+// Configure Nodemailer - lazy factory so env vars are always current (works in Vercel/serverless)
+function getEmailTransporter() {
+  const smtpUser = process.env.SMTP_USER?.trim();
+  const smtpPass = process.env.SMTP_PASS?.trim();
+  const smtpHost = process.env.SMTP_HOST?.trim() || 'smtp.gmail.com';
+  const smtpPort = parseInt(process.env.SMTP_PORT || '587');
+  const useSecure = smtpPort === 465; // true only for SSL port
+
+  return nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: useSecure,
+    auth: smtpUser && smtpPass ? { user: smtpUser, pass: smtpPass } : undefined,
+    tls: {
+      rejectUnauthorized: false, // Accept self-signed certs in dev; still encrypted
+    },
+  });
+}
 
 
 
@@ -117,7 +125,6 @@ function mapSettings(settings: any = {}) {
     profilePicturePublicId: settings.profilePicturePublicId
       || settings.profile_picture_public_id
       || getCloudinaryPublicIdFromUrl(settings.profilePictureUrl || settings.profile_picture_url),
-    currency: settings.currency || 'USD',
     defaultLowInventoryThreshold: Number(settings.defaultLowInventoryThreshold ?? settings.default_low_inventory_threshold ?? 10),
   };
 }
@@ -125,14 +132,12 @@ function mapSettings(settings: any = {}) {
 function mapSettingsToDb(settings: any = {}) {
   const mapped = mapSettings(settings);
   return {
-    bill_printer: mapped.billPrinter,
     store_name: mapped.storeName,
     tax_rate: mapped.taxRate,
     seller_name: mapped.sellerName,
     profile_picture_url: mapped.profilePictureUrl,
     profile_picture_public_id: mapped.profilePicturePublicId,
     default_low_inventory_threshold: mapped.defaultLowInventoryThreshold,
-    currency: mapped.currency,
   };
 }
 
@@ -216,7 +221,11 @@ function mapProduct(p: any) {
     imageUrl,
     publicId: getCloudinaryPublicIdFromUrl(imageUrl),
     category: p.category_id || '',
-    brand: resolvedBrand
+    brand: resolvedBrand,
+    lastRestock: skuMeta.lastRestock,
+    lastRestockAmount: skuMeta.lastRestockAmount,
+    lastLowStockDate: skuMeta.lastLowStockDate,
+    lastLowStockAmount: skuMeta.lastLowStockAmount
   };
 }
 
@@ -233,9 +242,11 @@ function parseProductSkuMeta(rawSku: any) {
     };
   }
 
-  const [sku, barcode, lowThresholdStr, unitType, purchasePriceStr] = parts;
+  const [sku, barcode, lowThresholdStr, unitType, purchasePriceStr, lastRestock, lastRestockAmountStr, lastLowStockDate, lastLowStockAmountStr] = parts;
   const parsedLowThreshold = lowThresholdStr ? Number.parseInt(lowThresholdStr, 10) : undefined;
   const parsedPurchasePrice = purchasePriceStr ? Number.parseFloat(purchasePriceStr) : undefined;
+  const parsedLastRestockAmount = lastRestockAmountStr ? Number.parseInt(lastRestockAmountStr, 10) : undefined;
+  const parsedLastLowStockAmount = lastLowStockAmountStr ? Number.parseInt(lastLowStockAmountStr, 10) : undefined;
 
   return {
     sku: sku || raw,
@@ -243,6 +254,10 @@ function parseProductSkuMeta(rawSku: any) {
     lowInventoryThreshold: Number.isFinite(parsedLowThreshold) ? parsedLowThreshold : undefined,
     unitType: unitType || '',
     purchasePrice: Number.isFinite(parsedPurchasePrice) ? parsedPurchasePrice : undefined,
+    lastRestock: lastRestock || undefined,
+    lastRestockAmount: Number.isFinite(parsedLastRestockAmount) ? parsedLastRestockAmount : undefined,
+    lastLowStockDate: lastLowStockDate || undefined,
+    lastLowStockAmount: Number.isFinite(parsedLastLowStockAmount) ? parsedLastLowStockAmount : undefined,
   };
 }
 
@@ -252,6 +267,10 @@ function buildProductSkuMeta(
   lowInventoryThreshold?: any,
   unitType?: any,
   purchasePrice?: any,
+  lastRestock?: any,
+  lastRestockAmount?: any,
+  lastLowStockDate?: any,
+  lastLowStockAmount?: any,
 ) {
   return [
     String(sku || ''),
@@ -259,6 +278,10 @@ function buildProductSkuMeta(
     lowInventoryThreshold !== undefined && lowInventoryThreshold !== null ? String(lowInventoryThreshold) : '',
     String(unitType || ''),
     purchasePrice !== undefined && purchasePrice !== null && purchasePrice !== '' ? String(purchasePrice) : '',
+    String(lastRestock || ''),
+    lastRestockAmount !== undefined && lastRestockAmount !== null ? String(lastRestockAmount) : '',
+    String(lastLowStockDate || ''),
+    lastLowStockAmount !== undefined && lastLowStockAmount !== null ? String(lastLowStockAmount) : '',
   ].join('::');
 }
 
@@ -637,7 +660,7 @@ const OFF_BARCODE_FIELDS = [
   'selected_images', 'product_type', 'quantity',
 ].join(',');
 
-const OFF_USER_AGENT = 'StockPilotWholesaleERP/1.0 (product lookup; contact: local-app)';
+const OFF_USER_AGENT = `StockPilotWholesaleERP/1.0 (product lookup; contact: ${process.env.SMTP_USER || 'local-app'})`;
 const WEB_SEARCH_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function fetchFromOpenFactsAPI(baseUrl: string, barcode: string, sourceHint: string) {
@@ -1388,7 +1411,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         const host = req.headers['x-forwarded-host'] || req.get('host');
         const origin = process.env.APP_URL || `${protocol}://${host}`;
         const verifyLink = `${origin}/verify-email?token=${verificationToken}`;
-        await transporter.sendMail({
+        await getEmailTransporter().sendMail({
           from: process.env.SMTP_FROM || '"Apex Distro ERP" <noreply@erp.com>',
           to: email,
           subject: "Verify Your Email Address",
@@ -1492,7 +1515,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         const host = req.headers['x-forwarded-host'] || req.get('host');
         const origin = process.env.APP_URL || `${protocol}://${host}`;
         const verifyLink = `${origin}/verify-email?token=${verificationToken}`;
-        await transporter.sendMail({
+        await getEmailTransporter().sendMail({
           from: process.env.SMTP_FROM || '"Apex Distro ERP" <noreply@erp.com>',
           to: data.email,
           subject: "Verify Your Email Address",
@@ -1540,8 +1563,16 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         const host = req.headers['x-forwarded-host'] || req.get('host');
         const origin = process.env.APP_URL || `${protocol}://${host}`;
         const resetLink = `${origin}/reset-password?token=${resetToken}`;
-        await transporter.sendMail({
-          from: process.env.SMTP_FROM || '"Apex Distro ERP" <noreply@erp.com>',
+        // Safely format the SMTP_FROM address if it's missing angle brackets but has spaces
+        let sender = process.env.SMTP_FROM || '"Apex Distro ERP" <noreply@erp.com>';
+        if (sender && !sender.includes('<') && sender.includes(' ')) {
+          const parts = sender.split(' ');
+          const emailPart = parts.pop();
+          sender = `"${parts.join(' ')}" <${emailPart}>`;
+        }
+
+        await getEmailTransporter().sendMail({
+          from: sender,
           to: email,
           subject: "Password Reset Request",
           html: `
@@ -1670,7 +1701,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   
   app.post("/api/products", async (req, res) => {
     console.log("POST /api/products body:", req.body);
-    const { id, name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice } = req.body;
+    const { id, name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount } = req.body;
     
     const capName = name ? capitalizeText(name) : '';
     const capCategory = category ? capitalizeText(category) : '';
@@ -1696,7 +1727,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       return sendDatabaseError(res, error, "Failed to check duplicate product");
     }
     
-    const parsedSku = buildProductSkuMeta(sku, barcode, lowInventoryThreshold, unitType, purchasePrice);
+    const parsedSku = buildProductSkuMeta(sku, barcode, lowInventoryThreshold, unitType, purchasePrice, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount);
 
     const dbRow = withOwner(req, {
       id: id || randomUUID(),
@@ -1726,7 +1757,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.put("/api/products/:id", async (req, res) => {
     try {
-      const { name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice } = req.body;
+      const { name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount } = req.body;
       const { data: existingProduct, error: existingError } = await supabase.from('products').select('*').eq('id', req.params.id).eq('user_id', getRequestUserId(req)).single();
       if (existingError && existingError.code !== 'PGRST116') return sendTenantSchemaError(res, 'products', existingError);
       if (!existingProduct) {
@@ -1760,11 +1791,15 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         lowInventoryThreshold !== undefined ? lowInventoryThreshold : existingSkuMeta.lowInventoryThreshold,
         unitType !== undefined ? unitType : existingSkuMeta.unitType,
         purchasePrice !== undefined ? purchasePrice : existingSkuMeta.purchasePrice,
+        lastRestock !== undefined ? lastRestock : existingSkuMeta.lastRestock,
+        lastRestockAmount !== undefined ? lastRestockAmount : existingSkuMeta.lastRestockAmount,
+        lastLowStockDate !== undefined ? lastLowStockDate : existingSkuMeta.lastLowStockDate,
+        lastLowStockAmount !== undefined ? lastLowStockAmount : existingSkuMeta.lastLowStockAmount
       );
 
       const dbRow: any = {};
       if (name !== undefined) dbRow.name = capName;
-      if (sku !== undefined || barcode !== undefined || lowInventoryThreshold !== undefined || unitType !== undefined || purchasePrice !== undefined) {
+      if (sku !== undefined || barcode !== undefined || lowInventoryThreshold !== undefined || unitType !== undefined || purchasePrice !== undefined || lastRestock !== undefined || lastRestockAmount !== undefined || lastLowStockDate !== undefined || lastLowStockAmount !== undefined) {
         dbRow.sku = parsedSku;
       }
       if (stock !== undefined) dbRow.stock = stock;
@@ -1816,7 +1851,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         return {
           id: s.id,
           total: s.total,
-          date: s.date,
+          date: s.date || s.created_at,
           items: s.items || [],
           customerId: s.customer_id,
           amountPaid: s.amount_paid,
@@ -2545,7 +2580,7 @@ Strict Output Format:
         const { data: freshCust } = await supabase.from('customers').select('*').eq('id', matchCustomer.id).eq('user_id', getRequestUserId(req)).single();
         const currentPaidAmount = freshCust?.paid_amount || matchCustomer.paidAmount || 0;
         const newPaidAmount = currentPaidAmount + quantityNum;
-        const aiSellerLabel = sellerName ? `AI Voice Assistant on behalf of ${sellerName}` : 'AI Voice Assistant';
+        const aiSellerLabel = 'AI Voice Assistant';
         
         // Add payment to ledger history
         const payments = freshCust?.payments || [];
@@ -2583,7 +2618,7 @@ Strict Output Format:
         
         const saleId = `ORD-${Date.now().toString().slice(-4)}`;
         const saleDate = new Date().toISOString();
-        const aiSellerLabel = sellerName ? `AI Voice Assistant on behalf of ${sellerName}` : 'AI Voice Assistant';
+        const aiSellerLabel = 'AI Voice Assistant';
         
         // Update customer payments journal for history tracking
         const payments = freshCust?.payments || [];
@@ -2713,7 +2748,7 @@ Strict Output Format:
           const totalValue = quantityNum * matchProduct.price;
           const saleId = `ORD-${Date.now().toString().slice(-4)}`;
           const saleDate = new Date().toISOString();
-          const aiSellerLabel = sellerName ? `AI Voice Assistant on behalf of ${sellerName}` : 'AI Voice Assistant';
+          const aiSellerLabel = 'AI Voice Assistant';
           
           let amountPaid = totalValue;
           

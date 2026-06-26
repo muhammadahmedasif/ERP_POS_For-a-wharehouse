@@ -12,6 +12,10 @@ export type Product = {
   lowInventoryThreshold?: number;
   unitType?: string;
   purchasePrice?: number;
+  lastRestock?: string;
+  lastRestockAmount?: number;
+  lastLowStockDate?: string;
+  lastLowStockAmount?: number;
 };
 
 export type CustomerPayment = {
