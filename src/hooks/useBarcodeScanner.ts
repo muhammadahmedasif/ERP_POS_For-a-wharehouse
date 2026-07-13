@@ -1,57 +1,102 @@
 import { useEffect, useRef } from 'react';
 
-export function useBarcodeScanner(onScan: (barcode: string) => void) {
-  const barcodeBuffer = useRef('');
-  const lastKeyTime = useRef(Date.now());
-  const onScanRef = useRef(onScan);
+export interface BarcodeScannerOptions {
+  /**
+   * Maximum milliseconds of silence between consecutive characters that still
+   * counts as a single scanner burst.  USB HID scanners emit all chars in
+   * < 50 ms.  Bluetooth scanners can be up to ~150 ms.
+   * Default: 80 ms — safe for USB HID, rejects casual fast typing.
+   */
+  burstWindowMs?: number;
+  /**
+   * Minimum number of characters in the buffer before the scan is accepted.
+   * Prevents single-key accidental triggers.
+   * Default: 3
+   */
+  minLength?: number;
+  /**
+   * How long (ms) to suppress firing the same barcode again after it was
+   * just scanned — prevents double-scan from a twitchy scanner.
+   * Default: 1500 ms
+   */
+  dedupWindowMs?: number;
+}
 
+export function useBarcodeScanner(
+  onScan: (barcode: string) => void,
+  options: BarcodeScannerOptions = {},
+) {
+  const {
+    burstWindowMs = 80,
+    minLength = 3,
+    dedupWindowMs = 1500,
+  } = options;
+
+  const barcodeBuffer = useRef('');
+  const lastKeyTime  = useRef(0);
+  const lastScanned  = useRef('');
+  const lastScanTime = useRef(0);
+  const onScanRef    = useRef(onScan);
+
+  // Keep the callback ref fresh without recreating the listener
   useEffect(() => {
     onScanRef.current = onScan;
   }, [onScan]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-      
-      const isBarcodeField = isInput && (
-        (e.target as HTMLElement).id === 'barcode-input' || 
-        (e.target as HTMLElement).getAttribute('name') === 'barcode'
-      );
+      const target = e.target as HTMLElement;
+      const isInput =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement;
 
-      const currentTime = Date.now();
-      const timeDiff = currentTime - lastKeyTime.current;
-      
-      if (isInput && !isBarcodeField) {
-        // If the user has focused a normal text input (like search, price, discount, name, etc.),
-        // do NOT intercept or call preventDefault. Allow normal typing to flow.
-        return;
-      }
+      // Allow normal typing in any input that isn't the dedicated barcode field
+      const isBarcodeField =
+        isInput &&
+        (target.id === 'barcode-input' ||
+          target.getAttribute('name') === 'barcode');
 
-      // Reset buffer if delay is too long for a scanner burst. 
-      // Typical barcode scanners are very fast (e.g. 10-30ms between strokes).
-      // A threshold of 50ms to 100ms is standard, but 1000ms is too generous and might catch random fast typing.
-      // We use 500ms as a safe middle ground.
-      if (timeDiff > 500) {
+      if (isInput && !isBarcodeField) return;
+
+      const now = Date.now();
+      const gap = now - lastKeyTime.current;
+
+      // Reset the buffer when there has been a long pause — this is NOT a
+      // scanner burst, it was a human typing.
+      if (lastKeyTime.current !== 0 && gap > burstWindowMs) {
         barcodeBuffer.current = '';
       }
-      
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        const scannedBarcode = barcodeBuffer.current.trim();
-        if (scannedBarcode.length > 2) {
+
+      // Only Enter terminates a scan (Tab causes focus-loss bugs in forms)
+      if (e.key === 'Enter') {
+        const scanned = barcodeBuffer.current.trim();
+        barcodeBuffer.current = '';
+
+        if (scanned.length >= minLength) {
           e.preventDefault();
           e.stopPropagation();
-          onScanRef.current(scannedBarcode);
-          barcodeBuffer.current = '';
+
+          // De-dupe guard: ignore if the exact same barcode was fired very recently
+          const isDuplicate =
+            scanned === lastScanned.current &&
+            now - lastScanTime.current < dedupWindowMs;
+
+          if (!isDuplicate) {
+            lastScanned.current  = scanned;
+            lastScanTime.current = now;
+            onScanRef.current(scanned);
+          }
         }
       } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Printable character — append to buffer
         barcodeBuffer.current += e.key;
       }
-      
-      lastKeyTime.current = currentTime;
+
+      lastKeyTime.current = now;
     };
 
-    // Use capture phase to intercept KeyDown before text input handles it
+    // Capture phase so we intercept before text inputs handle the event
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, []);
+  }, [burstWindowMs, minLength, dedupWindowMs]);
 }

@@ -155,10 +155,20 @@ const Inventory = () => {
     productType: classifyProduct(`${product.name} ${product.category} ${product.brand || ""}`),
   });
 
+  // O(1) barcode → product map, rebuilt only when products list changes
+  const barcodeProductMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const product of products) {
+      const key = normalizeBarcodeKey(product.barcode);
+      if (key) map.set(key, product);
+    }
+    return map;
+  }, [products]);
+
   const findExistingProductByBarcode = (barcode?: string) => {
     const key = normalizeBarcodeKey(barcode);
     if (!key) return undefined;
-    return products.find((product) => normalizeBarcodeKey(product.barcode) === key);
+    return barcodeProductMap.get(key);
   };
 
   const isDuplicateProduct = (candidate: Partial<Product>) => {

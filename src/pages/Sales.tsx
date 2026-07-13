@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -74,17 +74,24 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
   const [regularPaymentMode, setRegularPaymentMode] = useState<'full' | 'custom'>('full');
 
   const normalizeScanKey = (value?: string) => (value || '').trim().toLowerCase();
-  const findProductByScan = (scanValue: string) => {
-    const scanKey = normalizeScanKey(scanValue);
-    if (!scanKey) return undefined;
 
-    return products.find(p =>
-      normalizeScanKey(p.barcode) === scanKey
-      || normalizeScanKey(p.sku) === scanKey
-      || normalizeScanKey(p.id) === scanKey
-      || normalizeScanKey(p.name) === scanKey
-    );
-  };
+  // O(1) product lookup — rebuilt only when the products array changes
+  const productScanMap = useMemo(() => {
+    const map = new Map<string, Product>();
+    for (const p of products) {
+      if (p.barcode) map.set(normalizeScanKey(p.barcode), p);
+      if (p.sku)     map.set(normalizeScanKey(p.sku), p);
+      if (p.id)      map.set(normalizeScanKey(p.id), p);
+      if (p.name)    map.set(normalizeScanKey(p.name), p);
+    }
+    return map;
+  }, [products]);
+
+  const findProductByScan = useCallback((scanValue: string) => {
+    const key = normalizeScanKey(scanValue);
+    if (!key) return undefined;
+    return productScanMap.get(key);
+  }, [productScanMap]);
 
   useEffect(() => {
     if (location.pathname === '/sales/new') {
@@ -112,20 +119,9 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [view]);
 
-  // Auto-add product on exact barcode match
-  useEffect(() => {
-    if (view === 'new' && barcodeInput.trim()) {
-      const scanKey = normalizeScanKey(barcodeInput);
-      // We only auto-match exact barcode or SKU since name can have partial overlap easily
-      const exactMatch = products.find(p =>
-        (p.barcode && normalizeScanKey(p.barcode) === scanKey) ||
-        (p.sku && normalizeScanKey(p.sku) === scanKey)
-      );
-      if (exactMatch) {
-        addToCart(exactMatch);
-      }
-    }
-  }, [barcodeInput, products, view]);
+  // NOTE: Auto-add on exact barcode/SKU match is handled entirely by the
+  // useBarcodeScanner hook callback below (physical scanner path) and
+  // handleBarcodeSubmit (manual Enter path). No duplicate useEffect needed.
 
   useEffect(() => {
     fetchSales();
@@ -183,13 +179,16 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
     }
   };
 
-  const filteredProductsForSearch = products.filter(p =>
-    barcodeInput &&
-    (p.name?.toLowerCase().includes(barcodeInput.toLowerCase()) ||
+  const filteredProductsForSearch = useMemo(() => {
+    if (!barcodeInput) return [];
+    const q = barcodeInput.toLowerCase();
+    return products.filter(p =>
+      p.name?.toLowerCase().includes(q) ||
       p.barcode?.includes(barcodeInput) ||
       p.id.includes(barcodeInput) ||
-      p.sku?.toLowerCase().includes(barcodeInput.toLowerCase()))
-  );
+      p.sku?.toLowerCase().includes(q)
+    );
+  }, [barcodeInput, products]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (showSuggestions && barcodeInput && filteredProductsForSearch.length > 0) {

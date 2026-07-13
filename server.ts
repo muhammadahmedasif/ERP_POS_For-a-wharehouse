@@ -57,12 +57,18 @@ function getEmailTransporter() {
   const smtpUser = process.env.SMTP_USER?.trim();
   const smtpPass = process.env.SMTP_PASS?.trim();
   const smtpHost = process.env.SMTP_HOST?.trim() || 'smtp.gmail.com';
-  const smtpPort = parseInt(process.env.SMTP_PORT || '587');
-  const useSecure = smtpPort === 465; // true only for SSL port
+  
+  // Vercel/Cloud environments often block port 587. Default to 465 for Gmail to ensure delivery.
+  const isGmail = smtpHost.includes('gmail.com');
+  const defaultPort = isGmail ? '465' : '587';
+  
+  const smtpPort = parseInt(process.env.SMTP_PORT || defaultPort);
+  // Force secure true for port 465, or if it's Gmail (since we default to 465)
+  const useSecure = smtpPort === 465 || isGmail;
 
   return nodemailer.createTransport({
     host: smtpHost,
-    port: smtpPort,
+    port: isGmail ? 465 : smtpPort,
     secure: useSecure,
     auth: smtpUser && smtpPass ? { user: smtpUser, pass: smtpPass } : undefined,
     tls: {
@@ -654,6 +660,36 @@ function mapOpenFactsProduct(product: any, fallbackBarcode = '', sourceHint = 'o
 // MULTI-SOURCE BARCODE LOOKUP
 // ──────────────────────────────────────────────────────────────────
 
+// ── TTL cache ────────────────────────────────────────────────────
+// Prevents hammering the same 10 external APIs for every re-scan.
+interface CacheEntry<T> { value: T; expiresAt: number; }
+class TtlCache<T> {
+  private store = new Map<string, CacheEntry<T>>();
+  constructor(private readonly ttlMs: number) {}
+  get(key: string): T | undefined {
+    const entry = this.store.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) { this.store.delete(key); return undefined; }
+    return entry.value;
+  }
+  set(key: string, value: T) {
+    this.store.set(key, { value, expiresAt: Date.now() + this.ttlMs });
+    // Evict stale entries when cache grows large
+    if (this.store.size > 500) {
+      const now = Date.now();
+      for (const [k, v] of this.store) { if (now > v.expiresAt) this.store.delete(k); }
+    }
+  }
+}
+const barcodeResultCache = new TtlCache<any>(30 * 60 * 1000);  // 30 min
+const searchResultCache  = new TtlCache<any[]>(10 * 60 * 1000); // 10 min
+
+// ── In-flight de-duplication ──────────────────────────────────────
+// If two simultaneous requests arrive for the same barcode, the second
+// awaits the first instead of launching a duplicate fan-out.
+const inflightBarcode = new Map<string, Promise<any>>();
+
+
 const OFF_BARCODE_FIELDS = [
   'code', 'product_name', 'product_name_en', 'generic_name', 'generic_name_en',
   'brands', 'categories', 'categories_tags', 'image_url', 'image_front_url',
@@ -667,7 +703,7 @@ async function fetchFromOpenFactsAPI(baseUrl: string, barcode: string, sourceHin
   try {
     const url = `${baseUrl}/api/v2/product/${encodeURIComponent(barcode)}.json?product_type=all&fields=${encodeURIComponent(OFF_BARCODE_FIELDS)}`;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 4000); // tightened: 4 s
     const response = await fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
@@ -686,7 +722,7 @@ async function fetchFromOpenFactsAPI(baseUrl: string, barcode: string, sourceHin
 async function fetchUpcItemDbProduct(barcode: string) {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 4000); // tightened: 4 s
     const response = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(barcode)}`, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json', 'User-Agent': OFF_USER_AGENT },
@@ -781,22 +817,36 @@ function mapSearchResultProduct(barcode: string, rawTitle: string, rawSnippet = 
   };
 }
 
-async function fetchSearchHtml(url: string, timeoutMs = 6000) {
-  try {
+async function fetchSearchHtml(url: string, timeoutMs = 5000) {
+  const doFetch = async (targetUrl: string, ms = timeoutMs) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': WEB_SEARCH_USER_AGENT,
-        'Accept': 'text/html,application/xhtml+xml',
-      }
-    });
-    clearTimeout(timeout);
-    if (!response.ok) return '';
-    return await response.text();
+    const timeout = setTimeout(() => controller.abort(), ms);
+    try {
+      const response = await fetch(targetUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': WEB_SEARCH_USER_AGENT,
+          'Accept': 'text/html,application/xhtml+xml',
+        }
+      });
+      clearTimeout(timeout);
+      if (!response.ok) return '';
+      return await response.text();
+    } catch {
+      clearTimeout(timeout);
+      return '';
+    }
+  };
+
+  try {
+    const html = await doFetch(url);
+    if (!html || html.includes('captcha') || html.includes('cloudflare')) {
+      // Bypass datacenter IP blocks using proxy — give it a shorter window
+      return await doFetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, 3000);
+    }
+    return html;
   } catch {
-    return '';
+    return await doFetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, 3000);
   }
 }
 
@@ -831,27 +881,169 @@ async function fetchBingBarcode(barcode: string) {
   return null;
 }
 
-async function comprehensiveBarcodeLookup(barcode: string) {
-  // Query all external sources in parallel for maximum coverage
-  const results = await Promise.allSettled([
-    fetchFromOpenFactsAPI('https://world.openfoodfacts.org', barcode, 'open_food_facts'),
+async function fetchGoUpcBarcode(barcode: string) {
+  const html = await fetchSearchHtml(`https://go-upc.com/search?q=${barcode}`);
+  if (!html) return null;
+
+  const nameMatch = html.match(/<h1[^>]*class="[^"]*product-name[^"]*"[^>]*>([\s\S]*?)<\/h1>/i);
+  if (!nameMatch) return null;
+
+  const name = nameMatch[1].trim();
+  const brandMatch = html.match(/<td>Brand<\/td>\s*<td>([^<]+)<\/td>/i);
+  const brand = brandMatch ? brandMatch[1].trim() : resolveBrand('', name, barcode);
+  
+  const categoryMatch = html.match(/<td>Category<\/td>\s*<td>([^<]+)<\/td>/i);
+  const categoryText = categoryMatch ? categoryMatch[1].trim() : '';
+  
+  const imgMatch = html.match(/<figure[^>]*class="[^"]*product-image[^"]*"[^>]*>\s*<img[^>]*src="([^"]+)"/i);
+  let imageUrl = imgMatch ? imgMatch[1] : '';
+  if (imageUrl.startsWith('/')) imageUrl = `https://go-upc.com${imageUrl}`;
+
+  const productType = classifyProductType(`${name} ${brand} ${categoryText}`);
+
+  return {
+    source: 'web_search' as const,
+    barcode,
+    name,
+    brand,
+    category: displayCategoryFromType(productType, categoryText),
+    imageUrl,
+    productType,
+    locked: true,
+  };
+}
+
+async function fetchGroqBarcodePrediction(barcode: string) {
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // tightened: 5 s
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+        messages: [{
+          role: "system",
+          content: "You are a product identification API. User provides a barcode. If you know or can confidently guess the product for this standard UPC/EAN, reply ONLY with a valid JSON object in this format: {\\\"name\\\": \\\"Product Name\\\", \\\"brand\\\": \\\"Brand Name\\\", \\\"category\\\": \\\"Category\\\"}. If you do not know it, reply with exactly: {\\\"error\\\": \\\"unknown\\\"}. Do not include markdown formatting or any other text."
+        }, {
+          role: "user",
+          content: barcode
+        }],
+        temperature: 0.1,
+        max_tokens: 150
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    
+    if (!res.ok) return null;
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content?.trim() || "";
+    
+    const parsed = JSON.parse(content.replace(/```json|```/g, '').trim());
+    if (parsed.error || !parsed.name || parsed.name.toLowerCase().includes('unknown')) return null;
+
+    const brand = resolveBrand(parsed.brand || '', parsed.name, barcode);
+    const productType = classifyProductType(`${parsed.name} ${parsed.brand} ${parsed.category}`);
+    
+    return {
+      source: 'web_search' as const,
+      barcode,
+      name: parsed.name,
+      brand,
+      category: displayCategoryFromType(productType, parsed.category),
+      imageUrl: '',
+      productType,
+      locked: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchGeminiBarcodePrediction(barcode: string) {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // tightened: 5 s
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `You are a product identification API. Barcode: ${barcode}. If you confidently know this standard UPC/EAN, reply ONLY with a valid JSON: {"name": "Product Name", "brand": "Brand Name", "category": "Category"}. If unknown, reply: {"error": "unknown"}.`
+          }]
+        }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 150 }
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    
+    if (!res.ok) return null;
+    const data = await res.json();
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+    
+    const parsed = JSON.parse(content.replace(/```json|```/g, '').trim());
+    if (parsed.error || !parsed.name || parsed.name.toLowerCase().includes('unknown')) return null;
+
+    const brand = resolveBrand(parsed.brand || '', parsed.name, barcode);
+    const productType = classifyProductType(`${parsed.name} ${parsed.brand} ${parsed.category}`);
+    
+    return {
+      source: 'web_search' as const,
+      barcode,
+      name: parsed.name,
+      brand,
+      category: displayCategoryFromType(productType, parsed.category),
+      imageUrl: '',
+      productType,
+      locked: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function comprehensiveBarcodeLookup(barcode: string): Promise<any> {
+  // ── Phase 1: fast/reliable sources in parallel (4 s max) ─────────────────
+  // These typically resolve in < 2 s and cover the vast majority of barcodes.
+  const phase1 = await Promise.allSettled([
+    fetchFromOpenFactsAPI('https://world.openfoodfacts.org',  barcode, 'open_food_facts'),
     fetchFromOpenFactsAPI('https://world.openbeautyfacts.org', barcode, 'open_beauty_facts'),
     fetchFromOpenFactsAPI('https://world.openproductsfacts.org', barcode, 'open_products_facts'),
     fetchFromOpenFactsAPI('https://world.openpetfoodfacts.org', barcode, 'open_food_facts'),
     fetchUpcItemDbProduct(barcode),
+    fetchGoUpcBarcode(barcode),
+    fetchGroqBarcodePrediction(barcode),
+    fetchGeminiBarcodePrediction(barcode),
+  ]);
+
+  for (const result of phase1) {
+    if (result.status === 'fulfilled' && result.value) return result.value;
+  }
+
+  // ── Phase 2: slow/scrape-based sources (only if phase 1 has nothing) ─────
+  // Bing and DuckDuckGo are brittle HTML scrapers — use only as last resort.
+  const phase2 = await Promise.allSettled([
     fetchBingBarcode(barcode),
     fetchDuckDuckGoBarcode(barcode),
   ]);
 
-  // Return the first successful result
-
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value) {
-      return result.value;
-    }
+  for (const result of phase2) {
+    if (result.status === 'fulfilled' && result.value) return result.value;
   }
 
-  // Last resort: create a minimal product entry from barcode prefix intelligence
+  // ── Last resort: minimal entry from barcode-prefix brand intelligence ─────
   const brandFromBarcode = identifyBrandFromBarcode(barcode);
   if (brandFromBarcode) {
     return {
@@ -889,12 +1081,12 @@ async function searchOpenFoodFacts(query: string) {
       search_simple: '1',
       action: 'process',
       json: '1',
-      page_size: '6',
+      page_size: '4',    // reduced from 6 — fewer results, faster response
       fields: searchFields,
     });
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6000);
+      const timeout = setTimeout(() => controller.abort(), 4000); // tightened: 4 s
       const response = await fetch(`${baseUrl}/cgi/search.pl?${params.toString()}`, {
         signal: controller.signal,
         headers: { 'User-Agent': OFF_USER_AGENT },
@@ -1661,7 +1853,15 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         return res.json({ suggestions: localMatches, source: 'supabase' });
       }
 
+      // Check search cache before hitting external APIs
+      const cacheKey = normalizedQuery;
+      const cached = searchResultCache.get(cacheKey);
+      if (cached) {
+        return res.json({ suggestions: cached, source: 'open_food_facts', cached: true });
+      }
+
       const externalMatches = await searchOpenFoodFacts(q);
+      if (externalMatches.length > 0) searchResultCache.set(cacheKey, externalMatches);
       res.json({ suggestions: externalMatches, source: 'open_food_facts' });
     } catch (error: any) {
       console.error("Product lookup search failed:", error);
@@ -1674,6 +1874,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       const barcode = String(req.params.barcode || '').trim();
       if (!barcode) return res.status(400).json({ error: "Barcode is required" });
 
+      // 1. Check local DB first (always authoritative, no cache)
       const localProduct = await findProductByBarcode(req, barcode);
       if (localProduct) {
         return res.json({
@@ -1683,8 +1884,30 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         });
       }
 
-      const externalProduct = await fetchOpenFoodFactsProductByBarcode(barcode);
+      // 2. Check in-memory TTL cache
+      const cacheKey = barcode.toLowerCase();
+      const cached = barcodeResultCache.get(cacheKey);
+      if (cached) {
+        return res.json({
+          status: 'found',
+          source: cached.source || 'open_food_facts',
+          product: cached,
+          cached: true,
+        });
+      }
+
+      // 3. In-flight de-duplication: reuse an identical pending lookup
+      let pending = inflightBarcode.get(cacheKey);
+      if (!pending) {
+        pending = fetchOpenFoodFactsProductByBarcode(barcode).finally(() => {
+          inflightBarcode.delete(cacheKey);
+        });
+        inflightBarcode.set(cacheKey, pending);
+      }
+
+      const externalProduct = await pending;
       if (externalProduct) {
+        barcodeResultCache.set(cacheKey, externalProduct);
         return res.json({
           status: 'found',
           source: externalProduct.source || 'open_food_facts',
