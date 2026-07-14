@@ -49,12 +49,9 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
   const [view, setView] = useState<'list' | 'new'>(initialView);
 
   const [sales, setSales] = useState<any[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const { customers, fetchCustomers, user } = useAppStore();
-  const { settings, fetchSettings: fetchGlobalSettings } = useAppStore();
+  const { customers, fetchCustomers, user, products, fetchProducts, settings, fetchSettings } = useAppStore();
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [amountPaidInput, setAmountPaidInput] = useState('');
-  // Use global seller name, no need for local state that doesn't sync
   const sellerNameValue = user?.name || settings.sellerName || 'Admin';
   const [discountType, setDiscountType] = useState<'percent' | 'fixed'>('fixed');
   const [discountValue, setDiscountValue] = useState<string>('');
@@ -125,16 +122,13 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
 
   useEffect(() => {
     fetchSales();
-    fetchProducts();
-    fetchGlobalSettings();
+    if (products.length === 0) fetchProducts();
+    fetchSettings();
     fetchCustomers();
   }, []);
 
   const fetchSales = () => {
     fetch('/api/sales').then(r => r.json()).then(setSales);
-  };
-  const fetchProducts = () => {
-    fetch('/api/products').then(r => r.json()).then(setProducts);
   };
 
   const addToCart = (product: Product) => {

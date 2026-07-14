@@ -11,7 +11,6 @@ export type Product = {
   publicId?: string;
   lowInventoryThreshold?: number;
   unitType?: string;
-  purchasePrice?: number;
   lastRestock?: string;
   lastRestockAmount?: number;
   lastLowStockDate?: string;

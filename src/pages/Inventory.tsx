@@ -95,7 +95,6 @@ const blankForm = (settings: { defaultLowInventoryThreshold: number }, category 
   brand,
   stock: 0,
   price: 0,
-  purchasePrice: 0,
   barcode,
   imageUrl: "",
   publicId: "",
@@ -216,7 +215,6 @@ const Inventory = () => {
       brand: product.brand || "Unbranded / Generic",
       stock: product.stock,
       price: product.price,
-      purchasePrice: product.purchasePrice || 0,
       barcode: product.barcode || "",
       imageUrl: product.imageUrl || "",
       publicId: product.publicId || "",
@@ -276,7 +274,6 @@ const Inventory = () => {
       brand: suggestion.brand || "Unbranded / Generic",
       stock: 0,
       price: Number(existing?.price || 0),
-      purchasePrice: Number(existing?.purchasePrice || 0),
       barcode: suggestion.barcode || existing?.barcode || "",
       imageUrl: suggestion.imageUrl || existing?.imageUrl || "",
       publicId: existing?.publicId || "",
@@ -352,28 +349,38 @@ const Inventory = () => {
       return;
     }
 
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      if (/^\d{3,}$/.test(query)) {
-        const localBarcodeMatches = products
-          .filter((product) => normalizeBarcodeKey(product.barcode).includes(normalizeBarcodeKey(query)))
-          .slice(0, 8)
-          .map(productToSuggestion);
+    // Pure barcode query (all digits, ≥5): skip debounce and fire immediately
+    if (/^\d{5,}$/.test(query)) {
+      const localBarcodeMatches = products
+        .filter((product) => normalizeBarcodeKey(product.barcode).includes(normalizeBarcodeKey(query)))
+        .slice(0, 8)
+        .map(productToSuggestion);
 
+      const exactMatch = localBarcodeMatches.find((product) => normalizeBarcodeKey(product.barcode) === normalizeBarcodeKey(query));
+      if (exactMatch) {
         setSuggestions(localBarcodeMatches);
-
-        const exactMatch = localBarcodeMatches.find((product) => normalizeBarcodeKey(product.barcode) === normalizeBarcodeKey(query));
-        if (exactMatch) {
-          setIsLookupLoading(false);
-          return;
-        }
-
-        if (/^\d{5,}$/.test(query)) {
-          await lookupBarcode(query);
-          return;
-        }
+        setIsLookupLoading(false);
+        return;
       }
 
+      // No local match → hit external barcode lookup immediately (no debounce)
+      void lookupBarcode(query);
+      return;
+    }
+
+    // Partial digit query: show local barcode prefix matches while user types
+    if (/^\d{3,}$/.test(query)) {
+      const localBarcodeMatches = products
+        .filter((product) => normalizeBarcodeKey(product.barcode).includes(normalizeBarcodeKey(query)))
+        .slice(0, 8)
+        .map(productToSuggestion);
+      setSuggestions(localBarcodeMatches);
+      setIsLookupLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
       setIsLookupLoading(true);
       try {
         const response = await fetch(`/api/product-lookup/search?q=${encodeURIComponent(query)}`, {
@@ -394,7 +401,7 @@ const Inventory = () => {
       } finally {
         setIsLookupLoading(false);
       }
-    }, 350);
+    }, 300);
 
     return () => {
       controller.abort();
@@ -446,7 +453,6 @@ const Inventory = () => {
   const validateStockFields = () => {
     if (formData.stock <= 0) return "Quantity must be greater than 0.";
     if (formData.price <= 0) return "Selling price must be greater than Rs. 0.";
-    if (formData.purchasePrice < 0) return "Purchase price cannot be negative.";
     if (formData.lowInventoryThreshold < 0) return "Low stock alert cannot be negative.";
     if (!formData.unitType) return "Unit type is required.";
     return null;
@@ -472,7 +478,6 @@ const Inventory = () => {
         await updateProduct(selectedProduct.id, {
           stock: newStock,
           price: formData.price,
-          purchasePrice: formData.purchasePrice,
           lowInventoryThreshold: formData.lowInventoryThreshold,
           unitType: formData.unitType,
           imageUrl: formData.imageUrl,
@@ -534,7 +539,6 @@ const Inventory = () => {
         brand: formData.brand || "Unbranded / Generic",
         stock: formData.stock || 0,
         price: formData.price || 0,
-        purchasePrice: formData.purchasePrice || 0,
         lowInventoryThreshold: formData.lowInventoryThreshold || settings.defaultLowInventoryThreshold,
         productType: classifyProduct(`${formData.name} ${formData.category} ${formData.brand}`),
         lastRestock: formData.stock > 0 ? formatLastRestock() : undefined,
@@ -574,7 +578,6 @@ const Inventory = () => {
         lowInventoryThreshold: formData.lowInventoryThreshold,
         stock: formData.stock,
         price: formData.price,
-        purchasePrice: formData.purchasePrice,
         lastRestock: formData.stock > Number(editingProduct.stock || 0) ? formatLastRestock() : editingProduct.lastRestock,
         lastRestockAmount: formData.stock > Number(editingProduct.stock || 0) ? (formData.stock - Number(editingProduct.stock || 0)) : editingProduct.lastRestockAmount,
         lastLowStockDate: formData.stock <= (formData.lowInventoryThreshold || 10) ? formatLastRestock() : editingProduct.lastLowStockDate,
@@ -640,13 +643,17 @@ const Inventory = () => {
     }
   };
 
-  const filtered = products.filter((product) => (
-    product.name?.toLowerCase().includes(listSearchTerm.toLowerCase())
-    || product.sku?.toLowerCase().includes(listSearchTerm.toLowerCase())
-    || product.category?.toLowerCase().includes(listSearchTerm.toLowerCase())
-    || product.brand?.toLowerCase().includes(listSearchTerm.toLowerCase())
-    || (product.barcode && product.barcode.includes(listSearchTerm))
-  ));
+  const filtered = useMemo(() => {
+    const q = listSearchTerm.toLowerCase();
+    if (!q) return products;
+    return products.filter((product) => (
+      product.name?.toLowerCase().includes(q)
+      || product.sku?.toLowerCase().includes(q)
+      || product.category?.toLowerCase().includes(q)
+      || product.brand?.toLowerCase().includes(q)
+      || (product.barcode && product.barcode.includes(listSearchTerm))
+    ));
+  }, [products, listSearchTerm]);
 
   const getSourceLabel = (source?: string) => {
     if (source === "open_beauty_facts") return "Open Beauty Facts";
@@ -1000,16 +1007,7 @@ const Inventory = () => {
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price Optional</label>
-                  <Input
-                    type="number"
-                    value={formData.purchasePrice || ""}
-                    onChange={(e) => setFormData({ ...formData, purchasePrice: parseFloat(e.target.value) || 0 })}
-                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                  />
-                </div>
+
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Low Stock Alert</label>
                   <Input
@@ -1138,16 +1136,7 @@ const Inventory = () => {
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price Optional</label>
-                  <Input
-                    type="number"
-                    value={formData.purchasePrice || ""}
-                    onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
-                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                  />
-                </div>
+
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Low Stock Alert</label>
                   <Input
@@ -1316,16 +1305,7 @@ const Inventory = () => {
                     onWheel={(e) => (e.target as HTMLInputElement).blur()}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase">Purchase Price Optional</label>
-                  <Input
-                    type="number"
-                    value={formData.purchasePrice || ""}
-                    onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
-                    onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
-                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                  />
-                </div>
+
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase">Low Stock Alert</label>
                   <Input

@@ -192,7 +192,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   fetchProducts: async () => {
     const data = await apiRequest<Product[]>("/api/products");
-    console.log("Products from Supabase:", data);
     set({ products: Array.isArray(data) ? data : [] });
   },
   addProduct: async (product) => {

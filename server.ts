@@ -221,7 +221,6 @@ function mapProduct(p: any) {
     barcode: skuMeta.barcode,
     lowInventoryThreshold: skuMeta.lowInventoryThreshold,
     unitType: skuMeta.unitType,
-    purchasePrice: skuMeta.purchasePrice,
     stock: Number(p.stock) || 0,
     price: Number(p.price) || 0,
     imageUrl,
@@ -244,13 +243,11 @@ function parseProductSkuMeta(rawSku: any) {
       barcode: '',
       lowInventoryThreshold: undefined as number | undefined,
       unitType: '',
-      purchasePrice: undefined as number | undefined,
     };
   }
 
-  const [sku, barcode, lowThresholdStr, unitType, purchasePriceStr, lastRestock, lastRestockAmountStr, lastLowStockDate, lastLowStockAmountStr] = parts;
+  const [sku, barcode, lowThresholdStr, unitType, , lastRestock, lastRestockAmountStr, lastLowStockDate, lastLowStockAmountStr] = parts;
   const parsedLowThreshold = lowThresholdStr ? Number.parseInt(lowThresholdStr, 10) : undefined;
-  const parsedPurchasePrice = purchasePriceStr ? Number.parseFloat(purchasePriceStr) : undefined;
   const parsedLastRestockAmount = lastRestockAmountStr ? Number.parseInt(lastRestockAmountStr, 10) : undefined;
   const parsedLastLowStockAmount = lastLowStockAmountStr ? Number.parseInt(lastLowStockAmountStr, 10) : undefined;
 
@@ -259,7 +256,6 @@ function parseProductSkuMeta(rawSku: any) {
     barcode: barcode || '',
     lowInventoryThreshold: Number.isFinite(parsedLowThreshold) ? parsedLowThreshold : undefined,
     unitType: unitType || '',
-    purchasePrice: Number.isFinite(parsedPurchasePrice) ? parsedPurchasePrice : undefined,
     lastRestock: lastRestock || undefined,
     lastRestockAmount: Number.isFinite(parsedLastRestockAmount) ? parsedLastRestockAmount : undefined,
     lastLowStockDate: lastLowStockDate || undefined,
@@ -272,7 +268,7 @@ function buildProductSkuMeta(
   barcode?: any,
   lowInventoryThreshold?: any,
   unitType?: any,
-  purchasePrice?: any,
+  _purchasePrice?: any,
   lastRestock?: any,
   lastRestockAmount?: any,
   lastLowStockDate?: any,
@@ -283,7 +279,7 @@ function buildProductSkuMeta(
     String(barcode || ''),
     lowInventoryThreshold !== undefined && lowInventoryThreshold !== null ? String(lowInventoryThreshold) : '',
     String(unitType || ''),
-    purchasePrice !== undefined && purchasePrice !== null && purchasePrice !== '' ? String(purchasePrice) : '',
+    '',
     String(lastRestock || ''),
     lastRestockAmount !== undefined && lastRestockAmount !== null ? String(lastRestockAmount) : '',
     String(lastLowStockDate || ''),
@@ -656,6 +652,19 @@ function mapOpenFactsProduct(product: any, fallbackBarcode = '', sourceHint = 'o
   };
 }
 
+function guessCategoryFromBarcode(barcode: string): string {
+  if (!barcode || barcode.length < 4) return 'Other / Custom';
+  const prefix3 = barcode.substring(0, 3);
+  const prefix4 = barcode.substring(0, 4);
+  // Pakistan (896) and India (890-891) — mostly food, household, cosmetics
+  if (prefix3 === '896' || prefix4 === '8901' || prefix3 === '890') return 'Food & Grocery';
+  // USA/Canada (001-019) — often food & consumer packaged goods
+  if (/^(00[1-9]|0[1-9])/.test(barcode)) return 'Food & Grocery';
+  // Europe (300-379 FR, 400-440 DE, 871 NL) — mixed consumer goods
+  if (/^(30[0-9]|3[1-7][0-9]|40[0-9]|4[1-4][0-9]|871)/.test(barcode)) return 'Food & Grocery';
+  return 'Other / Custom';
+}
+
 // ──────────────────────────────────────────────────────────────────
 // MULTI-SOURCE BARCODE LOOKUP
 // ──────────────────────────────────────────────────────────────────
@@ -1014,6 +1023,20 @@ async function fetchGeminiBarcodePrediction(barcode: string) {
   }
 }
 
+// Score a scan result by how much useful information it contains.
+// Higher = richer. Used to pick the best result from parallel lookups.
+function scoreScanResult(result: any): number {
+  if (!result) return -1;
+  let score = 0;
+  if (result.name && result.name.trim().length > 2) score += 4;
+  if (result.brand && result.brand !== 'Unbranded / Generic' && result.brand.trim()) score += 3;
+  if (result.category && result.category !== 'Other / Custom' && result.category.trim()) score += 2;
+  if (result.imageUrl && result.imageUrl.trim()) score += 2;
+  if (result.barcode && result.barcode.trim()) score += 1;
+  if (result.locked) score += 1; // verified data sources get a bonus
+  return score;
+}
+
 async function comprehensiveBarcodeLookup(barcode: string): Promise<any> {
   // ── Phase 1: fast/reliable sources in parallel (4 s max) ─────────────────
   // These typically resolve in < 2 s and cover the vast majority of barcodes.
@@ -1028,9 +1051,19 @@ async function comprehensiveBarcodeLookup(barcode: string): Promise<any> {
     fetchGeminiBarcodePrediction(barcode),
   ]);
 
+  // Pick the richest result from phase1 instead of the first non-null
+  let best: any = null;
+  let bestScore = -1;
   for (const result of phase1) {
-    if (result.status === 'fulfilled' && result.value) return result.value;
+    if (result.status === 'fulfilled' && result.value) {
+      const score = scoreScanResult(result.value);
+      if (score > bestScore) {
+        bestScore = score;
+        best = result.value;
+      }
+    }
   }
+  if (best) return best;
 
   // ── Phase 2: slow/scrape-based sources (only if phase 1 has nothing) ─────
   // Bing and DuckDuckGo are brittle HTML scrapers — use only as last resort.
@@ -1039,19 +1072,29 @@ async function comprehensiveBarcodeLookup(barcode: string): Promise<any> {
     fetchDuckDuckGoBarcode(barcode),
   ]);
 
+  let best2: any = null;
+  let best2Score = -1;
   for (const result of phase2) {
-    if (result.status === 'fulfilled' && result.value) return result.value;
+    if (result.status === 'fulfilled' && result.value) {
+      const score = scoreScanResult(result.value);
+      if (score > best2Score) {
+        best2Score = score;
+        best2 = result.value;
+      }
+    }
   }
+  if (best2) return best2;
 
   // ── Last resort: minimal entry from barcode-prefix brand intelligence ─────
   const brandFromBarcode = identifyBrandFromBarcode(barcode);
+  const guessedCategory = guessCategoryFromBarcode(barcode);
   if (brandFromBarcode) {
     return {
       source: 'open_products_facts' as const,
       barcode,
       name: '',
       brand: brandFromBarcode,
-      category: 'Other / Custom',
+      category: guessedCategory,
       imageUrl: '',
       productType: 'unknown',
       locked: false,
@@ -1915,7 +1958,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         });
       }
 
-      res.json({ status: 'not_found', source: 'none', barcode });
+      res.json({ status: 'not_found', source: 'none', barcode, message: `Barcode "${barcode}" was not found in any product database. You can add it manually.` });
     } catch (error: any) {
       console.error("Barcode lookup failed:", error);
       res.status(500).json({ error: error.message || "Barcode lookup failed" });
@@ -1923,8 +1966,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
   });
   
   app.post("/api/products", async (req, res) => {
-    console.log("POST /api/products body:", req.body);
-    const { id, name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount } = req.body;
+    const { id, name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount } = req.body;
     
     const capName = name ? capitalizeText(name) : '';
     const capCategory = category ? capitalizeText(category) : '';
@@ -1950,7 +1992,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       return sendDatabaseError(res, error, "Failed to check duplicate product");
     }
     
-    const parsedSku = buildProductSkuMeta(sku, barcode, lowInventoryThreshold, unitType, purchasePrice, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount);
+    const parsedSku = buildProductSkuMeta(sku, barcode, lowInventoryThreshold, unitType, undefined, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount);
 
     const dbRow = withOwner(req, {
       id: id || randomUUID(),
@@ -1974,13 +2016,12 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
     
     const p = (data && data.length > 0) ? data[0] : dbRow;
     const mapped = mapProduct(p);
-    console.log("Supabase insert product success:", mapped);
     res.json(mapped);
   });
 
   app.put("/api/products/:id", async (req, res) => {
     try {
-      const { name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, purchasePrice, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount } = req.body;
+      const { name, sku, category, brand, stock, price, barcode, imageUrl, lowInventoryThreshold, unitType, lastRestock, lastRestockAmount, lastLowStockDate, lastLowStockAmount } = req.body;
       const { data: existingProduct, error: existingError } = await supabase.from('products').select('*').eq('id', req.params.id).eq('user_id', getRequestUserId(req)).single();
       if (existingError && existingError.code !== 'PGRST116') return sendTenantSchemaError(res, 'products', existingError);
       if (!existingProduct) {
@@ -2013,7 +2054,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
         nextBarcode,
         lowInventoryThreshold !== undefined ? lowInventoryThreshold : existingSkuMeta.lowInventoryThreshold,
         unitType !== undefined ? unitType : existingSkuMeta.unitType,
-        purchasePrice !== undefined ? purchasePrice : existingSkuMeta.purchasePrice,
+        undefined,
         lastRestock !== undefined ? lastRestock : existingSkuMeta.lastRestock,
         lastRestockAmount !== undefined ? lastRestockAmount : existingSkuMeta.lastRestockAmount,
         lastLowStockDate !== undefined ? lastLowStockDate : existingSkuMeta.lastLowStockDate,
@@ -2022,7 +2063,7 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
       const dbRow: any = {};
       if (name !== undefined) dbRow.name = capName;
-      if (sku !== undefined || barcode !== undefined || lowInventoryThreshold !== undefined || unitType !== undefined || purchasePrice !== undefined || lastRestock !== undefined || lastRestockAmount !== undefined || lastLowStockDate !== undefined || lastLowStockAmount !== undefined) {
+      if (sku !== undefined || barcode !== undefined || lowInventoryThreshold !== undefined || unitType !== undefined || lastRestock !== undefined || lastRestockAmount !== undefined || lastLowStockDate !== undefined || lastLowStockAmount !== undefined) {
         dbRow.sku = parsedSku;
       }
       if (stock !== undefined) dbRow.stock = stock;
@@ -2449,7 +2490,6 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.post("/api/customers", async (req, res) => {
     try {
-      console.log("POST /api/customers body:", req.body);
       const { name, phone, email, address, totalAmount, paidAmount, payments } = req.body;
       const capName = name ? capitalizeText(name) : '';
       const capAddress = address ? capitalizeText(address) : '';
