@@ -10,7 +10,7 @@ import { motion } from "framer-motion";
 const Dashboard = () => {
   const settings = useAppStore(state => state.settings);
   const navigate = useNavigate();
-  
+
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -22,14 +22,14 @@ const Dashboard = () => {
         setProducts(Array.isArray(data) ? data : []);
       })
       .catch((err) => console.error(err));
-      
+
     fetch("/api/sales")
       .then((res) => res.json())
       .then((data) => {
         setSales(Array.isArray(data) ? data : []);
       })
       .catch((err) => console.error(err));
-      
+
     fetch("/api/customers")
       .then((res) => res.json())
       .then((data) => {
@@ -41,9 +41,9 @@ const Dashboard = () => {
   const today = new Date().toDateString();
   const salesToday = sales.filter(s => new Date(s.date).toDateString() === today);
   const cashToday = salesToday.reduce((sum, sale) => sum + (Number(sale.amountPaid || sale.amount_paid || sale.total) || 0), 0);
-  
+
   const totalItemsInStock = products.reduce((sum, p) => sum + (p.stock || 0), 0);
-  
+
   const totalDues = customers.reduce((sum, c) => {
     const due = (c.totalAmount || c.total_amount || 0) - (c.paidAmount || c.paid_amount || 0);
     return sum + (due > 0 ? due : 0);
@@ -51,13 +51,12 @@ const Dashboard = () => {
 
   const lowStockThreshold = settings.defaultLowInventoryThreshold || 10;
   const lowStockItems = products.filter(p => (p.stock || 0) <= lowStockThreshold);
-  
+
   const pendingCustomers = customers.filter(c => ((c.totalAmount || c.total_amount || 0) - (c.paidAmount || c.paid_amount || 0)) > 0);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-20">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black text-slate-800">Home</h2>
         <p className="text-sm font-medium text-slate-500">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
       </div>
 

@@ -11,7 +11,7 @@ import { cn } from "../lib/utils";
 import { toast } from "sonner";
 
 export default function ManageTaxonomies() {
-  
+
   const {
     categories, fetchCategories, addCategory, deleteCategory,
     brands, fetchBrands, addBrand, deleteBrand,
@@ -97,7 +97,7 @@ export default function ManageTaxonomies() {
       },
       cancel: {
         label: 'Cancel',
-        onClick: () => {}
+        onClick: () => { }
       },
       duration: 10000,
     });
@@ -108,7 +108,7 @@ export default function ManageTaxonomies() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+        {/* <div className="flex items-center gap-3">
           <Link to="/inventory">
             <Button variant="outline" size="sm" className="p-2">
               <ArrowLeft className="w-4 h-4" />
@@ -118,7 +118,7 @@ export default function ManageTaxonomies() {
             <Tag className="w-5 h-5 text-indigo-600" />
             Categories & Brands
           </h2>
-        </div>
+        </div> */}
 
         <div className="flex bg-slate-100 p-1 rounded-lg">
           <button

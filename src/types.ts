@@ -40,6 +40,7 @@ export type SaleItem = {
   name: string;
   quantity: number;
   price: number;
+  returnedQuantity?: number;
 };
 
 export type Sale = {
@@ -53,4 +54,7 @@ export type Sale = {
   discountType?: string;
   discountValue?: string;
   sellerName?: string;
+  returnedItems?: { productId: string; name: string; quantity: number; price: number }[];
+  returnAmount?: number;
+  returnDate?: string;
 };

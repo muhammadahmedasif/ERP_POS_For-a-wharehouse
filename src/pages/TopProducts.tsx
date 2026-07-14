@@ -20,7 +20,7 @@ export default function TopProducts() {
     fetch("/api/sales")
       .then((res) => res.json())
       .then((data) => {
-        setSales(data);
+        setSales(Array.isArray(data) ? data : []);
       });
   }, []);
 

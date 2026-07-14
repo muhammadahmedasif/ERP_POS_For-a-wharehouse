@@ -128,7 +128,7 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
   }, []);
 
   const fetchSales = () => {
-    fetch('/api/sales').then(r => r.json()).then(setSales);
+    fetch('/api/sales').then(r => r.json()).then(data => setSales(Array.isArray(data) ? data : []));
   };
 
   const addToCart = (product: Product) => {
@@ -925,81 +925,110 @@ export default function Sales({ initialView = 'list' }: { initialView?: 'list' |
 
               return (
                 <div key={sale.id} className={cn(
-                  "bg-white rounded-xl p-4 border transition-all duration-300 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between shadow-sm hover:shadow-md",
+                  "bg-white rounded-xl border transition-all duration-300 shadow-sm hover:shadow-md overflow-hidden",
                   isAISale ? "border-violet-200 bg-violet-50/10" : "border-slate-100"
                 )}>
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className={cn(
-                      "w-12 h-12 rounded-full flex items-center justify-center shrink-0",
-                      client ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-600"
-                    )}>
-                      {client ? <Users className="w-6 h-6" /> : <User className="w-6 h-6" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-bold text-slate-800 text-lg truncate">
-                        {client ? client.name : "Walk-in Customer"}
-                      </h3>
-                      <p className="text-sm text-slate-500 truncate mt-0.5">{dateTime.date} at {dateTime.time}</p>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {sale.items && sale.items.length > 0 ? (
-                          sale.items.map((i: any, idx: number) => {
-                            const p = products.find(prod => prod.id === i.productId);
-                            return (
-                              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
-                                {i.quantity}x {p ? p.name : 'Product'}
-                              </span>
-                            );
-                          })
-                        ) : (
-                          <span className="text-xs text-slate-400">No items</span>
-                        )}
-                      </div>
+                  {/* Header Row: Order ID + Total + Actions */}
+                  <div className="flex items-center justify-between px-4 py-3 bg-slate-50/80 border-b border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-sm font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">
+                        {sale.id}
+                      </span>
                       {isAISale && (
-                        <div className="mt-1.5 inline-flex items-center gap-1 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide">
-                          <Sparkles className="w-3 h-3" /> AI Assisted
-                        </div>
+                        <span className="inline-flex items-center gap-1 bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                          <Sparkles className="w-3 h-3" /> AI
+                        </span>
+                      )}
+                      {sale.returnAmount > 0 && (
+                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full text-[10px] font-bold border border-amber-200">
+                          Returned: Rs. {sale.returnAmount.toFixed(0)}
+                        </span>
                       )}
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end shrink-0">
-                    <div className="text-left sm:text-right">
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total</p>
-                      <p className="font-black text-xl text-slate-900">Rs. {sale.total.toFixed(2)}</p>
-                      <div className="mt-1">
-                        {sale.customerId ? (
-                          outstandingBalance > 0 ? (
-                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
-                              Owes: Rs. {outstandingBalance.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                              Fully Paid
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                            Cash Paid
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 ml-4">
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={() => printReceipt(printPayload, products, settings)}
-                        className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                        className="p-1.5 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
                         title="Print Invoice"
                       >
-                        <Printer className="w-5 h-5" />
+                        <Printer className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteSale(sale.id)}
-                        className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
+                        className="p-1.5 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
                         title="Delete Sale"
                       >
-                        <Trash2 className="w-5 h-5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Body: Customer + Items + Amount */}
+                  <div className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        {/* Customer + Date */}
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className={cn(
+                            "w-7 h-7 rounded-full flex items-center justify-center shrink-0",
+                            client ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500"
+                          )}>
+                            {client ? <Users className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                          </div>
+                          <span className="font-semibold text-sm text-slate-800 truncate">
+                            {client ? client.name : "Walk-in Customer"}
+                          </span>
+                          <span className="text-[11px] text-slate-400 shrink-0">
+                            {dateTime.date} {dateTime.time && `at ${dateTime.time}`}
+                          </span>
+                        </div>
+
+                        {/* Items */}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {sale.items && sale.items.length > 0 ? (
+                            sale.items.map((i: any, idx: number) => {
+                              const p = products.find(prod => prod.id === i.productId);
+                              const returnedQty = sale.returnedItems?.find((r: any) => r.productId === i.productId)?.quantity || 0;
+                              return (
+                                <span key={idx} className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border",
+                                  returnedQty > 0
+                                    ? "bg-amber-50 text-amber-700 border-amber-200 line-through"
+                                    : "bg-slate-100 text-slate-600 border-slate-200"
+                                )}>
+                                  {i.quantity}x {p ? p.name : 'Product'}
+                                  {returnedQty > 0 && <span className="ml-1 text-amber-500">({returnedQty} ret)</span>}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <span className="text-xs text-slate-400">No items</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Amount + Status */}
+                      <div className="text-right shrink-0">
+                        <p className="font-black text-lg text-slate-900 font-mono">Rs. {sale.total.toFixed(2)}</p>
+                        <div className="mt-1">
+                          {sale.customerId ? (
+                            outstandingBalance > 0 ? (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
+                                Owes Rs. {outstandingBalance.toFixed(0)}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                                Paid
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                              Cash
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">{displaySellerName}</p>
+                      </div>
                     </div>
                   </div>
                 </div>

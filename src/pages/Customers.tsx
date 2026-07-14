@@ -76,7 +76,7 @@ export default function Customers() {
       .catch((err) => console.error(err));
     fetch("/api/sales")
       .then((res) => res.json())
-      .then((data) => setSales(data))
+      .then((data) => setSales(Array.isArray(data) ? data : []))
       .catch((err) => console.error(err));
   }, []);
 

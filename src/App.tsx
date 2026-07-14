@@ -17,6 +17,7 @@ import {
   PlusCircle,
   Tag,
   Bookmark,
+  RotateCcw,
 } from "lucide-react";
 import { useAppStore } from "./store";
 import { AUTH_INVALID_EVENT } from "./lib/authStorage";
@@ -37,6 +38,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import Help from "./pages/Help";
+import Returns from "./pages/Returns";
 import { FileText, Settings as SettingsIcon, Award, Menu, X, HelpCircle, Boxes } from "lucide-react";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -123,6 +125,7 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
     { name: "Categories & Brands", icon: Tag, path: "/categories" },
     { name: "Customers", icon: Users, path: "/customers" },
     { name: "Sales", icon: ShoppingCart, path: "/sales" },
+    { name: "Returns", icon: RotateCcw, path: "/returns" },
     { name: "New Sale", icon: PlusCircle, path: "/sales/new" },
     { name: "Top Items", icon: Award, path: "/top-products" },
     { name: "Summary", icon: FileText, path: "/reports" },
@@ -239,6 +242,8 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
         return "Customers";
       case "/sales":
         return "Sales";
+      case "/returns":
+        return "Returns";
       case "/sales/new":
         return "New Sale";
       case "/top-products":
@@ -382,6 +387,7 @@ function AppContent() {
                 <Route path="/categories" element={<ProtectedRoute><ManageTaxonomies /></ProtectedRoute>} />
                 <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
                 <Route path="/sales/new" element={<ProtectedRoute><Sales initialView="new" /></ProtectedRoute>} />
+                <Route path="/returns" element={<ProtectedRoute><Returns /></ProtectedRoute>} />
                 <Route path="/top-products" element={<ProtectedRoute><TopProducts /></ProtectedRoute>} />
                 <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
                 <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />

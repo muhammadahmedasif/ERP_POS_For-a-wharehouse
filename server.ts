@@ -2123,8 +2123,15 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
           discountType: s.discount_type,
           discountValue: s.discount_value,
           sellerName: cleanSellerName,
-          creditDeducted: s.credit_deducted || decodedCredit || 0
+          creditDeducted: s.credit_deducted || decodedCredit || 0,
+          returnedItems: s.returned_items || [],
+          returnAmount: Number(s.return_amount) || 0,
+          returnDate: s.return_date || undefined,
         };
+      }).sort((a, b) => {
+        const da = new Date(a.date).getTime();
+        const db = new Date(b.date).getTime();
+        return db - da;
       });
       res.json(mapped);
     } catch (error: any) {
@@ -2244,12 +2251,17 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       if (saleFetchError && saleFetchError.code !== 'PGRST116') return sendTenantSchemaError(res, 'sales', saleFetchError);
       if (!sale) return res.status(404).json({ error: 'Not found' });
 
-      // Restock
+      // Restock — skip items already returned
       if (sale.items) {
+        const returnedItems = sale.returned_items || [];
         for (const item of sale.items) {
-           const { data: product } = await supabase.from('products').select('stock').eq('id', item.productId).eq('user_id', getRequestUserId(req)).single();
-           if (product) {
-             await supabase.from('products').update({ stock: product.stock + item.quantity }).eq('id', item.productId).eq('user_id', getRequestUserId(req));
+           const alreadyReturned = returnedItems.find((r: any) => r.productId === item.productId)?.quantity || 0;
+           const restockQty = item.quantity - alreadyReturned;
+           if (restockQty > 0) {
+             const { data: product } = await supabase.from('products').select('stock').eq('id', item.productId).eq('user_id', getRequestUserId(req)).single();
+             if (product) {
+               await supabase.from('products').update({ stock: product.stock + restockQty }).eq('id', item.productId).eq('user_id', getRequestUserId(req));
+             }
            }
         }
       }
@@ -2272,6 +2284,90 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
       res.json({ success: true });
     } catch (error: any) {
       console.error("Supabase sale delete failed:", error);
+      sendDatabaseError(res, error);
+    }
+  });
+
+  app.post("/api/sales/:id/return", async (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!items?.length) return res.status(400).json({ error: "No items to return" });
+
+      const { data: sale, error: fetchErr } = await supabase
+        .from('sales').select('*').eq('id', req.params.id)
+        .eq('user_id', getRequestUserId(req)).single();
+      if (fetchErr || !sale) return res.status(404).json({ error: "Sale not found" });
+
+      const existingReturned: any[] = sale.returned_items || [];
+      let totalReturnAmount = 0;
+      const newReturnedItems: any[] = [];
+
+      for (const item of items) {
+        const original = (sale.items || []).find((i: any) => i.productId === item.productId);
+        if (!original) return res.status(400).json({ error: `Product "${item.name}" is not in this sale` });
+
+        const alreadyReturned = existingReturned.find((r: any) => r.productId === item.productId)?.quantity || 0;
+        const maxReturn = original.quantity - alreadyReturned;
+        if (item.quantity > maxReturn) {
+          return res.status(400).json({ error: `Cannot return ${item.quantity} of "${item.name}" — only ${maxReturn} left to return` });
+        }
+
+        const { data: product } = await supabase.from('products').select('stock')
+          .eq('id', item.productId).eq('user_id', getRequestUserId(req)).single();
+        if (product) {
+          await supabase.from('products').update({ stock: product.stock + item.quantity })
+            .eq('id', item.productId).eq('user_id', getRequestUserId(req));
+        }
+
+        const refundLine = (Number(original.price) || 0) * item.quantity;
+        totalReturnAmount += refundLine;
+        newReturnedItems.push({ productId: item.productId, name: item.name, quantity: item.quantity, price: original.price });
+      }
+
+      const mergedReturned = [...existingReturned, ...newReturnedItems];
+      const newReturnAmount = (Number(sale.return_amount) || 0) + totalReturnAmount;
+      const newTotal = Math.max(0, (Number(sale.total) || 0) - totalReturnAmount);
+
+      const updateRow: any = {
+        returned_items: mergedReturned,
+        return_amount: newReturnAmount,
+        return_date: new Date().toISOString(),
+        total: newTotal,
+      };
+
+      const { data: updated, error: updateErr } = await supabase
+        .from('sales').update(updateRow).eq('id', req.params.id)
+        .eq('user_id', getRequestUserId(req)).select();
+      if (updateErr) return sendTenantSchemaError(res, 'sales', updateErr);
+
+      if (sale.customer_id) {
+        const { data: customer } = await supabase.from('customers')
+          .select('total_amount').eq('id', sale.customer_id)
+          .eq('user_id', getRequestUserId(req)).single();
+        if (customer) {
+          await supabase.from('customers').update({
+            total_amount: Math.max(0, (customer.total_amount || 0) - totalReturnAmount)
+          }).eq('id', sale.customer_id).eq('user_id', getRequestUserId(req));
+        }
+      }
+
+      const s = updated?.[0] || { ...sale, ...updateRow };
+      const creditMatch = (s.seller_name || '').match(/\[CREDIT:([\d.]+)\]/);
+      const cleanSellerName = s.seller_name ? s.seller_name.replace(/\s*\[CREDIT:[\d.]+\s*\]/, '') : 'Admin';
+
+      res.json({
+        id: s.id, total: s.total, date: s.date || s.created_at,
+        items: s.items || [], customerId: s.customer_id,
+        amountPaid: s.amount_paid, discountAmount: s.discount_amount,
+        discountType: s.discount_type, discountValue: s.discount_value,
+        sellerName: cleanSellerName,
+        creditDeducted: s.credit_deducted || parseFloat(creditMatch?.[1] || '0') || 0,
+        returnedItems: s.returned_items || [],
+        returnAmount: Number(s.return_amount) || 0,
+        returnDate: s.return_date || undefined,
+      });
+    } catch (error: any) {
+      console.error("Return failed:", error);
       sendDatabaseError(res, error);
     }
   });
