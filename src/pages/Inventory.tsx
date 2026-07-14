@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import imageCompression from "browser-image-compression";
 import { ProductImage } from "../components/ProductImage";
 
@@ -105,6 +106,7 @@ const blankForm = (settings: { defaultLowInventoryThreshold: number }, category 
 });
 
 const Inventory = () => {
+  const location = useLocation();
 
   const {
     products,
@@ -134,6 +136,14 @@ const Inventory = () => {
   const [stockAdditions, setStockAdditions] = useState<Record<string, string>>({});
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const lookupInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-open scan modal when navigated from barcode scan button
+  useEffect(() => {
+    if ((location.state as any)?.openScan) {
+      openAddFlow();
+      window.history.replaceState({}, document.title);
+    }
+  }, []);
 
   const categoryOptions = useMemo(
     () => mergeNames(categories.map((category) => category.name), defaultCategories),
@@ -666,118 +676,104 @@ const Inventory = () => {
   const sourceLabel = getSourceLabel(formData.source);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-lg font-bold text-slate-800">Inventory</h2>
-        <div className="flex gap-2 w-full sm:w-auto">
-          <Button className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white" onClick={openAddFlow}>
-            <PackageSearch className="w-4 h-4 mr-2" />
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <p className="text-xs text-neutral-400">{products.length} products in inventory</p>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={openAddFlow} className="bg-primary-600 hover:bg-primary-700">
+            <PackageSearch className="w-4 h-4 mr-1.5" />
             Smart Add
           </Button>
-          <Button className="flex-1 sm:flex-none" variant="outline" onClick={openCustomFlow}>
-            <Plus className="w-4 h-4 mr-2" />
+          <Button size="sm" variant="outline" onClick={openCustomFlow}>
+            <Plus className="w-4 h-4 mr-1.5" />
             Custom Add
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search..."
-              className="pl-9"
-              value={listSearchTerm}
-              onChange={(e) => setListSearchTerm(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-3">
-            {filtered.map((product) => (
-              <div
-                key={product.id}
-                className={cn(
-                  "bg-white rounded-xl p-4 border transition-all duration-300 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between",
-                  highlightedProductId === product.id ? "border-indigo-300 bg-indigo-50/30 shadow-md" : "border-slate-100 hover:border-slate-200 hover:shadow-sm"
-                )}
-              >
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <ProductImage imageUrl={product.imageUrl} name={product.name} className="w-14 h-14 rounded-lg shadow-sm shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-slate-800 text-lg truncate" title={product.name}>{product.name}</h3>
-                    <p className="text-sm text-slate-500 truncate mt-0.5">{product.category} {product.brand && product.brand !== 'Unbranded' ? `• ${product.brand}` : ''}</p>
-                    <p className="text-xs text-slate-400 font-mono mt-1">{product.barcode || "No Barcode"}</p>
-                  </div>
-                </div>
+      <div className="relative w-full max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+        <Input placeholder="Search products..." className="pl-9 h-10" value={listSearchTerm} onChange={(e) => setListSearchTerm(e.target.value)} />
+      </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-between sm:justify-end shrink-0">
-                  
-                  {/* Info Boxes */}
-                  <div className="flex gap-2 text-left">
-                    <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 min-w-[120px]">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Last Restock</p>
-                      <p className="text-xs font-semibold text-slate-700 truncate">{product.lastRestock || "N/A"}</p>
-                      {product.lastRestockAmount ? (
-                        <p className="text-[10px] text-emerald-600 font-bold mt-0.5">+{product.lastRestockAmount} units</p>
-                      ) : null}
-                    </div>
-                    <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 min-w-[120px]">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Last Low Stock</p>
-                      <p className="text-xs font-semibold text-slate-700 truncate">{product.lastLowStockDate || "N/A"}</p>
-                      {product.lastLowStockAmount ? (
-                        <p className="text-[10px] text-rose-600 font-bold mt-0.5">Dropped to {product.lastLowStockAmount}</p>
-                      ) : null}
-                    </div>
+      <div className="grid grid-cols-1 gap-2">
+        {filtered.map((product) => (
+          <div key={product.id} className={cn(
+            "bg-white rounded-xl border p-4 transition-all",
+            highlightedProductId === product.id ? "border-primary-400 bg-primary-50/30 shadow-sm" : "border-border hover:border-neutral-300 hover:shadow-sm"
+          )}>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <ProductImage imageUrl={product.imageUrl} name={product.name} className="w-12 h-12 rounded-lg shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-neutral-900 text-sm truncate">{product.name}</h3>
+                    <span className={cn(
+                      "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+                      product.stock <= (product.lowInventoryThreshold || 10) ? "bg-rose-50 text-rose-600" : product.stock === 0 ? "bg-neutral-100 text-neutral-500" : "bg-emerald-50 text-emerald-600"
+                    )}>
+                      {product.stock} {product.unitType || 'pcs'}
+                    </span>
                   </div>
-
-                  <div className="text-left sm:text-right">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Stock</p>
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "font-black text-xl",
-                        product.stock <= (product.lowInventoryThreshold || 10) ? "text-rose-600" : "text-emerald-600"
-                      )}>
-                        {product.stock}
-                      </span>
-                      <span className="text-xs text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded-md">{product.unitType || 'pcs'}</span>
-                    </div>
-                  </div>
-
-                  <div className="text-right ml-4">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Price</p>
-                    <p className="font-bold text-slate-800 text-lg">Rs. {product.price.toLocaleString()}</p>
-                  </div>
-
-                  <div className="flex items-center gap-2 ml-4">
-                    <button
-                      onClick={() => openEditFlow(product)}
-                      className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
-                      aria-label={`Edit ${product.name}`}
-                    >
-                      <Edit2 className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => void handleDelete(product)}
-                      className="p-2 text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors"
-                      aria-label={`Delete ${product.name}`}
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
+                  <p className="text-xs text-neutral-400 mt-0.5 truncate">
+                    {product.category}{product.brand && product.brand !== 'Unbranded / Generic' ? ` • ${product.brand}` : ''}
+                  </p>
+                  <p className="text-[11px] text-neutral-300 font-mono mt-0.5">{product.barcode || product.sku || 'No barcode'}</p>
                 </div>
               </div>
-            ))}
-            {filtered.length === 0 && (
-              <div className="text-center py-12 text-slate-400 font-medium">
-                <PackageSearch className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p>No products found.</p>
+
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="text-right">
+                  <p className="text-xs text-neutral-400">Price</p>
+                  <p className="font-semibold text-neutral-900">Rs. {product.price.toLocaleString()}</p>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => openEditFlow(product)} className="p-2 text-neutral-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => void handleDelete(product)} className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+
+            {/* Collapsible details */}
+            <details className="mt-3 group">
+              <summary className="text-[11px] text-neutral-400 hover:text-neutral-600 cursor-pointer select-none list-none flex items-center gap-1">
+                <span className="inline-block transition-transform group-open:rotate-90">▶</span> Details
+              </summary>
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div className="bg-neutral-50 rounded-lg p-2.5">
+                  <p className="text-[10px] font-medium text-neutral-400 uppercase">Last Restock</p>
+                  <p className="font-medium text-neutral-700 mt-0.5">{product.lastRestock || 'N/A'}</p>
+                  {product.lastRestockAmount ? <p className="text-[10px] text-emerald-600 mt-0.5">+{product.lastRestockAmount} units</p> : null}
+                </div>
+                <div className="bg-neutral-50 rounded-lg p-2.5">
+                  <p className="text-[10px] font-medium text-neutral-400 uppercase">Last Low Stock</p>
+                  <p className="font-medium text-neutral-700 mt-0.5">{product.lastLowStockDate || 'N/A'}</p>
+                  {product.lastLowStockAmount ? <p className="text-[10px] text-rose-600 mt-0.5">Dropped to {product.lastLowStockAmount}</p> : null}
+                </div>
+                <div className="bg-neutral-50 rounded-lg p-2.5">
+                  <p className="text-[10px] font-medium text-neutral-400 uppercase">SKU</p>
+                  <p className="font-medium text-neutral-700 mt-0.5 font-mono text-[11px]">{product.sku}</p>
+                </div>
+                <div className="bg-neutral-50 rounded-lg p-2.5">
+                  <p className="text-[10px] font-medium text-neutral-400 uppercase">Threshold</p>
+                  <p className="font-medium text-neutral-700 mt-0.5">{product.lowInventoryThreshold || 10} units</p>
+                </div>
+              </div>
+            </details>
           </div>
-        </CardContent>
-      </Card>
+        ))}
+        {filtered.length === 0 && (
+          <div className="text-center py-16 text-neutral-400">
+            <PackageSearch className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
+            <p className="text-sm font-medium">No products found</p>
+            <p className="text-xs mt-1">Add your first product to start selling.</p>
+          </div>
+        )}
+      </div>
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
         <DialogHeader>

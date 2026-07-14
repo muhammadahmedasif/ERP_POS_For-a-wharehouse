@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { ProductImage } from '../components/ProductImage';
-import { Search, RotateCcw, Plus, AlertCircle, CheckCircle, FileText, User, Users, PackageSearch, Minus } from 'lucide-react';
+import { Search, RotateCcw, Plus, CheckCircle, FileText, User, PackageSearch, Minus } from 'lucide-react';
 import { Product, Sale } from '../types';
 import { toast } from 'sonner';
 import { useAppStore } from '../store';
@@ -158,50 +158,37 @@ export default function Returns() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <h2 className="text-2xl font-extrabold text-slate-900">Returns</h2>
-          <p className="text-sm font-medium text-slate-500">View and process product returns from sales.</p>
-        </div>
-        <Button
-          onClick={() => openNewReturn()}
-          size="lg"
-          className="h-12 px-6 bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-lg shadow-amber-200"
-        >
-          <RotateCcw className="w-5 h-5 mr-2" />
+        <p className="text-xs text-neutral-400">View and process product returns from sales.</p>
+        <Button onClick={() => openNewReturn()}>
+          <RotateCcw className="w-4 h-4 mr-1.5" />
           New Return
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 bg-slate-50 border border-slate-100 p-3 rounded-lg">
+      <div className="flex flex-wrap items-center gap-4 bg-neutral-50 border border-border rounded-lg p-3 text-sm">
         <div className="flex items-center gap-2">
-          <FileText className="w-4 h-4 text-amber-600" />
-          <div className="text-sm">
-            <span className="text-slate-500">Total Returns:</span>
-            <span className="ml-1.5 font-bold text-amber-700 font-mono">{overallReturnCount}</span>
-          </div>
+          <FileText className="w-4 h-4 text-primary-600" />
+          <span className="text-neutral-400">Total Returns:</span>
+          <span className="font-semibold text-neutral-900">{overallReturnCount}</span>
         </div>
-        <div className="w-px h-4 bg-slate-200 hidden sm:block"></div>
+        <div className="w-px h-4 bg-border hidden sm:block" />
         <div className="flex items-center gap-2">
           <RotateCcw className="w-4 h-4 text-rose-500" />
-          <div className="text-sm">
-            <span className="text-slate-500">Returned Amount:</span>
-            <span className="ml-1.5 font-bold text-rose-700 font-mono">Rs. {totalReturnedVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-          </div>
+          <span className="text-neutral-400">Returned Amount:</span>
+          <span className="font-semibold text-rose-600">Rs. {totalReturnedVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
         </div>
-        <div className="w-px h-4 bg-slate-200 hidden sm:block"></div>
+        <div className="w-px h-4 bg-border hidden sm:block" />
         <div className="flex items-center gap-2">
           <PackageSearch className="w-4 h-4 text-emerald-500" />
-          <div className="text-sm">
-            <span className="text-slate-500">Net Sales:</span>
-            <span className="ml-1.5 font-bold text-emerald-700 font-mono">Rs. {overallTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-          </div>
+          <span className="text-neutral-400">Net Sales:</span>
+          <span className="font-semibold text-emerald-600">Rs. {overallTotalVolume.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
         </div>
       </div>
 
-      <Card className="border border-slate-100 shadow-sm">
-        <CardHeader className="pb-4">
+      <Card>
+        <CardHeader className="pb-0">
           <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
             <Input
               placeholder="Search by Bill ID or Customer Name..."
               className="pl-9"
@@ -210,64 +197,55 @@ export default function Returns() {
             />
           </div>
         </CardHeader>
-        <CardContent className="p-0">
-          <div className="grid grid-cols-1 gap-3 p-4">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 gap-2">
             {filteredReturns.map((sale) => {
               const client = sale.customerId ? customers.find(c => c.id === sale.customerId) : null;
               const returnDate = sale.returnDate ? formatReturnDate(sale.returnDate) : '';
 
               return (
-                <div key={sale.id} className="bg-white rounded-xl p-4 border border-slate-100 transition-all duration-300 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between shadow-sm hover:shadow-md">
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className={cn(
-                      "w-12 h-12 rounded-full flex items-center justify-center shrink-0",
-                      client ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-600"
-                    )}>
-                      {client ? <Users className="w-6 h-6" /> : <User className="w-6 h-6" />}
+                <div key={sale.id} className="bg-white rounded-xl p-4 border border-border transition-all hover:shadow-sm flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center shrink-0", client ? "bg-amber-50 text-amber-600" : "bg-neutral-100 text-neutral-500")}>
+                      {client ? <User className="w-5 h-5" /> : <User className="w-5 h-5" />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-slate-800 text-lg truncate">
-                          {sale.id}
-                        </h3>
-                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
-                          RETURNED
-                        </span>
+                        <h3 className="font-semibold text-neutral-900 text-sm truncate">{sale.id}</h3>
+                        <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">RETURNED</span>
                       </div>
-                      <p className="text-sm text-slate-500 truncate mt-0.5">
-                        {client ? client.name : 'Walk-in Customer'} {returnDate && `• Returned ${returnDate}`}
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        {client ? client.name : 'Walk-in Customer'} {returnDate && `• ${returnDate}`}
                       </p>
-                      <div className="flex flex-wrap gap-1 mt-2">
+                      <div className="flex flex-wrap gap-1 mt-1.5">
                         {sale.returnedItems && sale.returnedItems.length > 0 ? (
                           sale.returnedItems.map((ri: any, idx: number) => (
-                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                            <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
                               {ri.quantity}x {ri.name}
                             </span>
                           ))
                         ) : (
-                          <span className="text-xs text-slate-400">Items returned</span>
+                          <span className="text-xs text-neutral-400">Items returned</span>
                         )}
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end shrink-0">
-                    <div className="text-left sm:text-right">
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Refunded</p>
-                      <p className="font-black text-xl text-rose-600">Rs. {(sale.returnAmount || 0).toFixed(2)}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Net Total: Rs. {(sale.total || 0).toFixed(2)}
-                      </p>
+                    <div className="text-right">
+                      <p className="text-xs text-neutral-400">Refunded</p>
+                      <p className="font-semibold text-lg text-rose-600">Rs. {(sale.returnAmount || 0).toFixed(2)}</p>
+                      <p className="text-[10px] text-neutral-400">Net: Rs. {(sale.total || 0).toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
               );
             })}
             {filteredReturns.length === 0 && (
-              <div className="text-center py-12 text-slate-400 font-medium">
-                <RotateCcw className="w-12 h-12 mx-auto mb-4 opacity-20" />
-                <p>No returns recorded yet.</p>
-                <p className="text-sm mt-1">Click "New Return" to process a return.</p>
+              <div className="text-center py-12 text-neutral-400">
+                <RotateCcw className="w-10 h-10 mx-auto mb-3 text-neutral-200" />
+                <p className="text-sm font-medium">No returns recorded yet</p>
+                <p className="text-xs mt-1">Click "New Return" to process a return.</p>
               </div>
             )}
           </div>
@@ -277,16 +255,16 @@ export default function Returns() {
       <Dialog open={isNewReturnOpen} onOpenChange={setIsNewReturnOpen}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <RotateCcw className="w-5 h-5 text-amber-500" />
+            <RotateCcw className="w-4 h-4" />
             Process Return
           </DialogTitle>
         </DialogHeader>
         <DialogContent className="space-y-4 max-h-[75vh] overflow-y-auto">
           {!selectedSale ? (
             <div className="space-y-3">
-              <p className="text-sm text-slate-600">Search for a sale to return items from.</p>
+              <p className="text-sm text-neutral-500">Search for a sale to return items from.</p>
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3 top-3 w-4 h-4 text-neutral-400" />
                 <Input
                   placeholder="Search by Bill ID or Customer Name..."
                   className="pl-9"
@@ -295,7 +273,7 @@ export default function Returns() {
                 />
               </div>
               {saleSearchResults.length > 0 && (
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="border border-border rounded-lg overflow-hidden">
                   {saleSearchResults.map((s) => {
                     const cust = s.customerId ? customers.find(c => c.id === s.customerId) : null;
                     const hasReturned = s.returnAmount && s.returnAmount > 0;
@@ -303,18 +281,18 @@ export default function Returns() {
                       <button
                         key={s.id}
                         type="button"
-                        className="w-full px-4 py-3 text-left hover:bg-slate-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                        className="w-full px-4 py-3 text-left hover:bg-neutral-50 border-b border-border last:border-b-0 transition-colors"
                         onClick={() => selectSaleForReturn(s)}
                       >
                         <div className="flex items-center justify-between">
                           <div>
-                            <div className="font-bold text-sm text-slate-800">{s.id}</div>
-                            <div className="text-xs text-slate-500">{cust ? cust.name : 'Walk-in'} • Rs. {(s.total || 0).toFixed(2)}</div>
+                            <div className="font-medium text-sm text-neutral-900">{s.id}</div>
+                            <div className="text-xs text-neutral-400">{cust ? cust.name : 'Walk-in'} • Rs. {(s.total || 0).toFixed(2)}</div>
                           </div>
                           <div className="text-right">
-                            <div className="text-xs text-slate-400">{s.items?.length || 0} items</div>
+                            <div className="text-xs text-neutral-400">{s.items?.length || 0} items</div>
                             {hasReturned && (
-                              <div className="text-[10px] text-amber-600 font-bold">Partial return done</div>
+                              <div className="text-[10px] text-amber-600 font-medium">Partial return done</div>
                             )}
                           </div>
                         </div>
@@ -324,29 +302,29 @@ export default function Returns() {
                 </div>
               )}
               {returnSaleId.length >= 2 && saleSearchResults.length === 0 && (
-                <p className="text-sm text-slate-400 text-center py-4">No sales found matching "{returnSaleId}"</p>
+                <p className="text-sm text-neutral-400 text-center py-4">No sales found matching "{returnSaleId}"</p>
               )}
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-slate-50 rounded-lg p-3 border border-slate-100">
+              <div className="flex items-center justify-between bg-neutral-50 rounded-lg p-3 border border-border">
                 <div>
-                  <p className="text-sm font-bold text-slate-800">{selectedSale.id}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm font-medium text-neutral-900">{selectedSale.id}</p>
+                  <p className="text-xs text-neutral-400">
                     {selectedSale.customerId ? customers.find(c => c.id === selectedSale.customerId)?.name || 'Customer' : 'Walk-in'} • Original: Rs. {(selectedSale.total || 0).toFixed(2)}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => { setReturnSaleId(''); setReturnItems({}); }}
-                  className="text-xs text-amber-600 hover:text-amber-700 font-bold"
+                  className="text-xs text-amber-600 hover:text-amber-700 font-medium"
                 >
                   Change Sale
                 </button>
               </div>
 
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Items to Return</p>
+                <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider">Select Items to Return</p>
                 <button
                   type="button"
                   onClick={() => {
@@ -356,7 +334,7 @@ export default function Returns() {
                     });
                     setReturnItems(all);
                   }}
-                  className="text-xs text-amber-600 hover:text-amber-700 font-bold"
+                  className="text-xs text-amber-600 hover:text-amber-700 font-medium"
                 >
                   Select All
                 </button>
@@ -371,10 +349,7 @@ export default function Returns() {
                   return (
                     <div
                       key={item.productId}
-                      className={cn(
-                        "border rounded-lg p-3 transition-all",
-                        selected > 0 ? "border-amber-300 bg-amber-50/50" : "border-slate-200 bg-white"
-                      )}
+                      className={cn("border rounded-lg p-3 transition-all", selected > 0 ? "border-amber-300 bg-amber-50/50" : "border-border bg-white")}
                     >
                       <div className="flex items-center gap-3">
                         <input
@@ -386,12 +361,12 @@ export default function Returns() {
                               [item.productId]: e.target.checked ? Math.min(available, 1) : 0,
                             }));
                           }}
-                          className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                          className="w-4 h-4 rounded border-neutral-300 text-amber-600 focus:ring-amber-500"
                         />
                         <ProductImage imageUrl={product?.imageUrl} name={item.name} className="w-10 h-10" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-slate-800 truncate">{item.name}</p>
-                          <p className="text-xs text-slate-500">
+                          <p className="text-sm font-medium text-neutral-900 truncate">{item.name}</p>
+                          <p className="text-xs text-neutral-400">
                             Original: {item.quantity} @ Rs. {item.price.toFixed(2)}
                             {available < item.quantity && (
                               <span className="text-amber-600 ml-1">({item.quantity - available} already returned)</span>
@@ -407,11 +382,11 @@ export default function Returns() {
                                   ...prev,
                                   [item.productId]: Math.max(0, (prev[item.productId] || 0) - 1),
                                 }))}
-                                className="w-7 h-7 rounded-md bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50"
+                                className="w-7 h-7 rounded-md bg-white border border-border flex items-center justify-center hover:bg-neutral-50"
                               >
                                 <Minus className="w-3 h-3" />
                               </button>
-                              <span className="w-8 text-center text-sm font-bold text-slate-800">{selected}</span>
+                              <span className="w-8 text-center text-sm font-medium text-neutral-900">{selected}</span>
                               <button
                                 type="button"
                                 onClick={() => setReturnItems(prev => ({
@@ -419,18 +394,16 @@ export default function Returns() {
                                   [item.productId]: Math.min(available, (prev[item.productId] || 0) + 1),
                                 }))}
                                 disabled={selected >= available}
-                                className="w-7 h-7 rounded-md bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40"
+                                className="w-7 h-7 rounded-md bg-white border border-border flex items-center justify-center hover:bg-neutral-50 disabled:opacity-40"
                               >
                                 <Plus className="w-3 h-3" />
                               </button>
                             </div>
                           ) : (
-                            <span className="text-xs text-slate-400">0 of {available}</span>
+                            <span className="text-xs text-neutral-400">0 of {available}</span>
                           )}
                           {selected > 0 && (
-                            <p className="text-[10px] text-amber-700 font-bold mt-1">
-                              Rs. {(item.price * selected).toFixed(2)}
-                            </p>
+                            <p className="text-[10px] text-amber-700 font-medium mt-1">Rs. {(item.price * selected).toFixed(2)}</p>
                           )}
                         </div>
                       </div>
@@ -442,17 +415,13 @@ export default function Returns() {
               {getReturnItemCount() > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-bold text-amber-800">
+                    <p className="text-sm font-medium text-amber-800">
                       <CheckCircle className="w-4 h-4 inline mr-1" />
                       Returning {getReturnItemCount()} item(s)
                     </p>
-                    <p className="text-xs text-amber-700 mt-0.5">
-                      Items will be restocked and customer balance adjusted.
-                    </p>
+                    <p className="text-xs text-amber-600 mt-0.5">Items will be restocked and customer balance adjusted.</p>
                   </div>
-                  <p className="text-lg font-black text-amber-700">
-                    Rs. {getReturnTotal().toFixed(2)}
-                  </p>
+                  <p className="text-lg font-semibold text-amber-700">Rs. {getReturnTotal().toFixed(2)}</p>
                 </div>
               )}
             </div>
@@ -464,7 +433,6 @@ export default function Returns() {
             <Button
               onClick={handleReturn}
               disabled={getReturnItemCount() === 0 || isSubmitting}
-              className="bg-amber-500 hover:bg-amber-600 text-white font-bold"
             >
               {isSubmitting ? 'Processing...' : `Confirm Return${getReturnTotal() > 0 ? ` (Rs. ${getReturnTotal().toFixed(2)})` : ''}`}
             </Button>

@@ -1,28 +1,18 @@
 import React, { useEffect } from "react";
 import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Link,
-  useLocation,
-  Navigate,
+  BrowserRouter, Routes, Route, Link, useLocation, useNavigate, Navigate,
 } from "react-router-dom";
 import { Toaster } from "sonner";
 import {
-  LayoutDashboard,
-  Package,
-  ShoppingCart,
-  Users,
-  Bot,
-  PlusCircle,
-  Tag,
-  Bookmark,
-  RotateCcw,
+  LayoutDashboard, ShoppingCart, Users, Bot, Package, Tag,
+  RotateCcw, FileText, Award, Settings as SettingsIcon,
+  HelpCircle, PlusCircle, Menu, X, Search, ChevronDown, QrCode,
 } from "lucide-react";
 import { useAppStore } from "./store";
 import { AUTH_INVALID_EVENT } from "./lib/authStorage";
 import { cn } from "./lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import SearchCommand from "./components/SearchCommand";
 import Dashboard from "./pages/Dashboard";
 import Inventory from "./pages/Inventory";
 import ManageTaxonomies from "./pages/ManageTaxonomies";
@@ -39,7 +29,61 @@ import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import Help from "./pages/Help";
 import Returns from "./pages/Returns";
-import { FileText, Settings as SettingsIcon, Award, Menu, X, HelpCircle, Boxes } from "lucide-react";
+
+interface NavSection {
+  name: string;
+  items: { name: string; icon: React.ElementType; path: string; accent?: string }[];
+}
+
+const sectionAccents: Record<string, string> = {
+  "Quick Access": "bg-primary-500",
+  "Sales": "bg-emerald-500",
+  "Inventory": "bg-amber-500",
+  "Customers": "bg-violet-500",
+  "Reports": "bg-blue-500",
+};
+
+const navSections: NavSection[] = [
+  {
+    name: "Quick Access",
+    items: [
+      { name: "New Sale", icon: PlusCircle, path: "/sales/new", accent: "emerald" },
+      { name: "Sales", icon: ShoppingCart, path: "/sales", accent: "emerald" },
+      { name: "Products", icon: Package, path: "/inventory", accent: "amber" },
+      { name: "Dashboard", icon: LayoutDashboard, path: "/", accent: "primary" },
+    ],
+  },
+  {
+    name: "Customers",
+    items: [{ name: "Customers", icon: Users, path: "/customers", accent: "violet" }],
+  },
+  {
+    name: "Sales",
+    items: [
+      { name: "Returns", icon: RotateCcw, path: "/returns" },
+    ],
+  },
+  {
+    name: "Inventory",
+    items: [
+      { name: "Categories & Brands", icon: Tag, path: "/categories" },
+    ],
+  },
+  {
+    name: "Reports",
+    items: [
+      { name: "Summary", icon: FileText, path: "/reports" },
+      { name: "Top Items", icon: Award, path: "/top-products" },
+    ],
+  },
+];
+
+const accentColors: Record<string, { activeBg: string; activeText: string; activeIcon: string; hoverText: string; iconColor: string }> = {
+  primary: { activeBg: "bg-primary-600/20", activeText: "text-primary-300", activeIcon: "text-primary-400", hoverText: "hover:text-white", iconColor: "text-primary-500" },
+  emerald: { activeBg: "bg-emerald-600/20", activeText: "text-emerald-300", activeIcon: "text-emerald-400", hoverText: "hover:text-white", iconColor: "text-emerald-500" },
+  amber: { activeBg: "bg-amber-600/20", activeText: "text-amber-300", activeIcon: "text-amber-400", hoverText: "hover:text-white", iconColor: "text-amber-500" },
+  violet: { activeBg: "bg-violet-600/20", activeText: "text-violet-300", activeIcon: "text-violet-400", hoverText: "hover:text-white", iconColor: "text-violet-500" },
+};
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const user = useAppStore((state) => state.user);
@@ -48,179 +92,174 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const isPaid = user?.paid_status !== false && user?.user_metadata?.paid_status !== false;
     if (user && !isPaid) {
       import("sonner").then((mod) => {
-        mod.toast.error("Payment delayed contact support", { duration: 5000 });
+        mod.toast.error("Payment delayed. Contact support.", { duration: 5000 });
       });
     }
   }, [user]);
 
-  // Periodic automatic profile refresh — checks DB for latest name, email, paid_status etc.
   useEffect(() => {
     if (!user) return;
-    
     const checkProfile = async () => {
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
-
-        const res = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
+        const res = await fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
           const data = await res.json();
           if (data.user) {
-            // Update live Zustand state
             useAppStore.setState({ user: data.user });
-            // Update localStorage cache
             localStorage.setItem("user", JSON.stringify(data.user));
           }
         }
-      } catch (err) {
-        // Silently ignore network failures so it doesn't bother users when offline
-      }
+      } catch {}
     };
-
-    // Check immediately on app load
     checkProfile();
-
-    // Re-check periodically every 24 hours (86400000 ms)
     const interval = setInterval(checkProfile, 1000 * 60 * 60 * 24);
     return () => clearInterval(interval);
   }, [user?.id]);
 
-  if (!user) {
-    return <Login />;
-  }
+  if (!user) return <Login />;
 
   const isPaid = user.paid_status !== false && user.user_metadata?.paid_status !== false;
   if (!isPaid) {
     return (
-      <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-900 text-white p-4">
-        <div className="text-center space-y-4 max-w-md">
-          <div className="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl">⚠️</span>
+      <div className="flex h-screen w-full flex-col items-center justify-center bg-neutral-50 p-4">
+        <div className="text-center space-y-4 max-w-sm">
+          <div className="w-14 h-14 bg-danger-50 text-danger-500 rounded-full flex items-center justify-center mx-auto">
+            <span className="text-2xl font-bold">!</span>
           </div>
-          <h1 className="text-2xl font-bold text-rose-500">Access Restricted</h1>
-          <p className="text-slate-400">Payment delayed contact support.</p>
-          <button 
-            onClick={() => useAppStore.getState().logout()} 
-            className="mt-6 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors font-medium"
-          >
+          <h1 className="text-xl font-semibold text-danger-600">Access Restricted</h1>
+          <p className="text-sm text-neutral-500">Your account requires payment verification. Contact support.</p>
+          <button onClick={() => useAppStore.getState().logout()} className="mt-4 px-5 py-2 bg-neutral-900 text-white rounded-lg text-sm font-medium hover:bg-neutral-800 transition-colors">
             Logout
           </button>
         </div>
       </div>
     );
   }
-
   return <>{children}</>;
 };
 
 const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const location = useLocation();
-
-  const menuItems = [
-    { name: "Home", icon: LayoutDashboard, path: "/" },
-    { name: "Stock", icon: Package, path: "/inventory" },
-    { name: "Categories & Brands", icon: Tag, path: "/categories" },
-    { name: "Customers", icon: Users, path: "/customers" },
-    { name: "Sales", icon: ShoppingCart, path: "/sales" },
-    { name: "Returns", icon: RotateCcw, path: "/returns" },
-    { name: "New Sale", icon: PlusCircle, path: "/sales/new" },
-    { name: "Top Items", icon: Award, path: "/top-products" },
-    { name: "Summary", icon: FileText, path: "/reports" },
-    { name: "Settings", icon: SettingsIcon, path: "/settings" },
-    { name: "Assistant", icon: Bot, path: "/ai" },
-    { name: "Help", icon: HelpCircle, path: "/help" },
-  ];
+  const { settings } = useAppStore();
 
   return (
     <>
-      {/* Backdrop for mobile */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden"
+            className="fixed inset-0 bg-black/30 z-40 lg:hidden"
             onClick={onClose}
           />
         )}
       </AnimatePresence>
 
-      <aside
-        className={cn(
-          "glass-dark text-slate-300 flex flex-col shrink-0 h-screen lg:h-[calc(100vh-32px)] lg:m-4 lg:rounded-2xl border-r lg:border border-white/10 transition-transform duration-300 z-50 shadow-2xl shadow-indigo-500/10",
-          "fixed inset-y-0 left-0 w-64 lg:static lg:flex lg:translate-x-0 overflow-hidden",
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        )}
-      >
-        <div className="p-6 flex items-center justify-between border-b border-white/5 relative overflow-hidden">
-          {/* Subtle gradient glow */}
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-transparent pointer-events-none" />
-          
-          <div className="flex items-center gap-3 relative z-10">
-            {/* Vector SVG Aura mark */}
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-gradient-to-br from-indigo-500/30 to-purple-500/30 border border-white/20 shadow-lg shadow-indigo-500/10">
-              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-6 h-6">
-                <path d="M30 40C30 34.4772 34.4772 30 40 30H70V50C70 61.0457 61.0457 70 50 70H30V40Z" fill="url(#sideGrad)" opacity="0.9" />
-                <path d="M70 60C70 65.5228 65.5228 70 60 70H30V50C30 38.9543 38.9543 30 50 30H70V60Z" fill="white" opacity="0.3" />
-                <circle cx="50" cy="50" r="10" fill="white" opacity="0.8" />
-                <defs><linearGradient id="sideGrad" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stopColor="#a78bfa" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs>
+      <aside className={cn(
+        "flex flex-col shrink-0 h-screen bg-neutral-900 border-r border-neutral-800 transition-transform duration-200 z-50",
+        "fixed inset-y-0 left-0 w-60 lg:static lg:translate-x-0",
+        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}>
+        <div className="flex items-center justify-between px-5 h-14 border-b border-neutral-800 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary-600 flex items-center justify-center">
+              <svg viewBox="0 0 100 100" fill="none" className="w-4 h-4">
+                <path d="M32 42C32 36.4772 36.4772 32 42 32H68V50C68 59.9411 59.9411 68 50 68H32V42Z" fill="white" opacity="0.95" />
+                <circle cx="50" cy="50" r="10" fill="#171717" />
               </svg>
             </div>
             <div>
-              <h1 className="text-white font-extrabold text-lg leading-none tracking-tight">
-                Aura
-              </h1>
-              <p className="text-[9px] text-indigo-400/80 font-bold uppercase tracking-[0.2em] mt-1">
-                Workspace
-              </p>
+              <span className="font-heading font-bold text-sm text-white leading-none">Aura</span>
+              <p className="text-[9px] font-medium text-neutral-500 uppercase tracking-wider mt-0.5">{settings.storeName || "Workspace"}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="lg:hidden text-slate-400 hover:text-white transition-colors relative z-10 p-1.5 bg-white/5 rounded-lg hover:bg-white/10"
-          >
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="lg:hidden text-neutral-500 hover:text-neutral-300 p-1">
+            <X className="w-4 h-4" />
           </button>
         </div>
-        
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-          {menuItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            const isNewSale = item.path === "/sales/new";
-            const Icon = item.icon;
+
+        <nav className="flex-1 overflow-y-auto scrollbar-none px-3 py-3 space-y-4">
+          {navSections.map((section) => {
+            const sectionDot = sectionAccents[section.name];
             return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={onClose}
-                className={cn(
-                  "rounded-xl px-3 py-3 flex items-center gap-3 transition-all duration-300 text-[14px] font-medium group relative overflow-hidden",
-                  isNewSale
-                    ? "my-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 font-bold"
-                    : isActive
-                      ? "bg-white/10 text-white shadow-sm border border-white/10 font-semibold"
-                      : "hover:bg-white/5 text-slate-400 hover:text-white",
-                )}
-              >
-                {isActive && !isNewSale && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-r-full"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.2 }}
-                  />
-                )}
-                <Icon className={cn("w-5 h-5 shrink-0 transition-transform duration-300", isActive ? "scale-110 text-indigo-400" : "group-hover:scale-110", isNewSale && "text-white")} />
-                <span>{item.name}</span>
-              </Link>
+            <div key={section.name}>
+              <div className="flex items-center gap-2 px-2 mb-2">
+                <span className={`w-1.5 h-1.5 rounded-full ${sectionDot}`} />
+                <p className="text-[9px] font-semibold text-neutral-600 uppercase tracking-widest">{section.name}</p>
+              </div>
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const isActive = location.pathname === item.path;
+                  const colors = item.accent ? accentColors[item.accent] : null;
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={onClose}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition-all duration-150 relative",
+                        isActive && colors
+                          ? `${colors.activeBg} ${colors.activeText} font-medium`
+                          : isActive
+                          ? "bg-neutral-800 text-neutral-300 font-medium"
+                          : colors
+                          ? "text-neutral-400 hover:text-white hover:bg-neutral-800"
+                          : "text-neutral-600 hover:text-neutral-400 hover:bg-neutral-800"
+                      )}
+                    >
+                      {isActive && (
+                        <span className={cn(
+                          "absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full",
+                          colors ? `${colors.activeIcon.replace('text-', 'bg-')}` : "bg-neutral-400"
+                        )} />
+                      )}
+                      <Icon className={cn("w-4 h-4 shrink-0 transition-colors",
+                        isActive && colors ? colors.activeIcon
+                        : isActive ? "text-neutral-400"
+                        : colors ? `${colors.iconColor} opacity-80`
+                        : "text-neutral-600"
+                      )} />
+                      <span className={cn(
+                        isActive && colors ? "text-[13px]" : "",
+                        !isActive && colors ? "font-medium" : ""
+                      )}>{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
             );
           })}
         </nav>
+
+        <div className="border-t border-neutral-800 px-3 py-2 space-y-0.5 shrink-0">
+          <Link
+            to="/settings"
+            onClick={onClose}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition-all duration-150",
+              location.pathname === "/settings" ? "bg-neutral-800 text-neutral-300" : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+            )}
+          >
+            <SettingsIcon className="w-4 h-4 shrink-0 opacity-70" />
+            <span>Settings</span>
+          </Link>
+          <Link
+            to="/help"
+            onClick={onClose}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition-all duration-150",
+              location.pathname === "/help" ? "bg-neutral-800 text-neutral-300" : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800"
+            )}
+          >
+            <HelpCircle className="w-4 h-4 shrink-0 opacity-70" />
+            <span>Help</span>
+          </Link>
+        </div>
       </aside>
     </>
   );
@@ -229,93 +268,66 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
   const { settings, user } = useAppStore();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const getPageTitle = () => {
     switch (location.pathname) {
-      case "/":
-        return "Home";
-      case "/inventory":
-        return "Stock";
-      case "/categories":
-        return "Categories & Brands";
-      case "/customers":
-        return "Customers";
-      case "/sales":
-        return "Sales";
-      case "/returns":
-        return "Returns";
-      case "/sales/new":
-        return "New Sale";
-      case "/top-products":
-        return "Top Items";
-      case "/reports":
-        return "Summary";
-      case "/settings":
-        return "Settings";
-      case "/ai":
-        return "Assistant";
-      case "/help":
-        return "Help";
-      default:
-        return "Aura";
+      case "/": return "Dashboard";
+      case "/inventory": return "Products";
+      case "/categories": return "Categories & Brands";
+      case "/customers": return "Customers";
+      case "/sales": return "Sales";
+      case "/returns": return "Returns";
+      case "/sales/new": return "New Sale";
+      case "/top-products": return "Top Items";
+      case "/reports": return "Summary";
+      case "/settings": return "Settings";
+      case "/ai": return "Assistant";
+      case "/help": return "Help";
+      default: return "";
     }
   };
 
   return (
-    <header className="sticky top-0 z-30 h-[72px] glass border-b border-white/40 flex items-center justify-between px-4 sm:px-8 shrink-0 shadow-sm shadow-slate-200/50 lg:mt-4 lg:mx-4 lg:rounded-2xl">
-      <div className="flex items-center gap-4">
-        {user && (
-          <button
-            onClick={onMenuClick}
-            className="p-2 -ml-2 rounded-xl hover:bg-slate-100/80 text-slate-600 lg:hidden transition-colors"
-            title="Toggle Menu"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-        )}
-        {user && (
-          <div className="hidden sm:flex flex-col select-none">
-            <span className="text-[10px] uppercase tracking-widest text-indigo-600 font-bold">
-              {settings.storeName || "Aura Workspace"}
-            </span>
-            <span className="text-xl font-bold text-slate-800 tracking-tight leading-none mt-1">
-              {getPageTitle()}
-            </span>
-          </div>
-        )}
+    <header className="sticky top-0 z-30 h-14 bg-white/80 backdrop-blur-md border-b border-border flex items-center justify-between px-4 lg:px-6 shrink-0">
+      <div className="flex items-center gap-3">
+        <button onClick={onMenuClick} className="p-1.5 -ml-1.5 rounded-lg hover:bg-neutral-100 text-neutral-500 lg:hidden transition-colors">
+          <Menu className="w-5 h-5" />
+        </button>
+        <h1 className="text-base font-semibold text-neutral-900">{getPageTitle()}</h1>
       </div>
-      <div className="flex items-center gap-5">
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => {
+            const event = new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true });
+            document.dispatchEvent(event);
+          }}
+          className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-400 bg-neutral-50 border border-border rounded-lg hover:bg-neutral-100 transition-colors"
+        >
+          <Search className="w-3.5 h-3.5" />
+          <span>Search</span>
+          <kbd className="text-[10px] font-medium text-neutral-400 bg-white border border-border px-1 py-0.5 rounded ml-4">⌘K</kbd>
+        </button>
+
         {user ? (
-          <>
-            <motion.button 
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => useAppStore.getState().logout()} 
-              className="text-sm font-semibold bg-white/60 backdrop-blur-sm text-slate-700 border border-slate-200/50 px-4 py-2 rounded-xl select-none cursor-pointer hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition-all shadow-sm"
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => useAppStore.getState().logout()}
+              className="text-xs font-medium text-neutral-500 hover:text-neutral-700 px-2 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
             >
               Logout
-            </motion.button>
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-bold leading-none text-slate-800">
-                {settings.sellerName || user?.name || "Admin"}
-              </p>
-              <p className="text-xs text-slate-500 mt-1 font-medium">
-                {settings.storeName}
-              </p>
-            </div>
-            <motion.div 
-              whileHover={{ scale: 1.05, rotate: 5 }}
-              className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-100 overflow-hidden flex items-center justify-center text-sm font-bold text-indigo-700 shadow-sm"
-            >
+            </button>
+            <div className="w-7 h-7 rounded-lg bg-primary-100 border border-primary-200 flex items-center justify-center text-xs font-semibold text-primary-600">
               {settings.profilePictureUrl ? (
-                <img src={settings.profilePictureUrl} alt="Logo" className="w-full h-full object-cover"/>
+                <img src={settings.profilePictureUrl} alt="" className="w-full h-full object-cover rounded-lg" />
               ) : (
                 (settings.sellerName || user?.name || 'A').charAt(0).toUpperCase()
               )}
-            </motion.div>
-          </>
+            </div>
+          </div>
         ) : (
-            <Link to="/login" className="text-sm font-semibold bg-slate-900 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-slate-900/20 hover:shadow-slate-900/40 transition-all">Login</Link>
+          <Link to="/login" className="text-sm font-medium text-white bg-primary-600 px-4 py-1.5 rounded-lg hover:bg-primary-700 transition-colors">Login</Link>
         )}
       </div>
     </header>
@@ -325,7 +337,8 @@ const Navbar = ({ onMenuClick }: { onMenuClick: () => void }) => {
 function AppContent() {
   const { fetchSettings, logout, user } = useAppStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const location = useLocation(); // To track routes for animations
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     window.addEventListener(AUTH_INVALID_EVENT, logout);
@@ -335,69 +348,75 @@ function AppContent() {
   useEffect(() => {
     const handleAccessDenied = (e: Event) => {
       const msg = (e as CustomEvent).detail?.message || 'Access denied. You have been logged out.';
-      import('sonner').then(({ toast }) => {
-        toast.error(msg, { duration: 6000 });
-      });
+      import('sonner').then(({ toast }) => { toast.error(msg, { duration: 6000 }); });
     };
     window.addEventListener('auth:access-denied', handleAccessDenied);
     return () => window.removeEventListener('auth:access-denied', handleAccessDenied);
   }, []);
 
   useEffect(() => {
-    if (user) {
-      fetchSettings();
-    }
+    if (user) fetchSettings();
   }, [fetchSettings, user]);
 
-  return (
-    <div className="flex h-[100dvh] bg-[#fcfcfc] text-slate-800 overflow-hidden font-sans relative z-0 selection:bg-indigo-500/20">
-      {/* Global Premium Ambient Background */}
-      <div className="absolute inset-0 pointer-events-none z-[-1] overflow-hidden">
-        {/* Animated glowing orbs for a dynamic premium feel */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-500/10 blur-[100px] animate-pulse" style={{ animationDuration: '8s' }} />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[50%] h-[50%] rounded-full bg-purple-500/10 blur-[120px] animate-pulse" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-      </div>
+  const isAuthPage = ["/login", "/signup", "/forgot-password", "/reset-password", "/verify-email"].includes(location.pathname);
 
-      <Toaster position="top-right" toastOptions={{ className: 'glass rounded-xl shadow-xl border-white/50 font-sans' }} />
-      
+  if (isAuthPage && !user) {
+    return (
+      <>
+        <Toaster position="top-right" toastOptions={{ className: 'font-sans text-sm' }} />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </>
+    );
+  }
+
+  return (
+    <div className="flex h-[100dvh] bg-[#f0f2f5] text-neutral-800 overflow-hidden">
+      <Toaster position="top-right" toastOptions={{ className: 'font-sans text-sm' }} />
+      <SearchCommand />
       {user && <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />}
-      
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-transparent relative z-10">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {user && <Navbar onMenuClick={() => setSidebarOpen(true)} />}
-        
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-8 pt-6 relative">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-              className="h-full"
-            >
-              <Routes location={location}>
-                <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-                <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/" />} />
-                <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
-                <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
-                <Route path="/verify-email" element={!user ? <VerifyEmail /> : <Navigate to="/" />} />
-                <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
-                <Route path="/categories" element={<ProtectedRoute><ManageTaxonomies /></ProtectedRoute>} />
-                <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
-                <Route path="/sales/new" element={<ProtectedRoute><Sales initialView="new" /></ProtectedRoute>} />
-                <Route path="/returns" element={<ProtectedRoute><Returns /></ProtectedRoute>} />
-                <Route path="/top-products" element={<ProtectedRoute><TopProducts /></ProtectedRoute>} />
-                <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
-                <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-                <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-                <Route path="/ai" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
-                <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
-                <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
-              </Routes>
-            </motion.div>
-          </AnimatePresence>
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-7xl px-4 lg:px-6 py-6">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
+              >
+                <Routes location={location}>
+                  <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+                  <Route path="/signup" element={!user ? <Signup /> : <Navigate to="/" />} />
+                  <Route path="/forgot-password" element={!user ? <ForgotPassword /> : <Navigate to="/" />} />
+                  <Route path="/reset-password" element={!user ? <ResetPassword /> : <Navigate to="/" />} />
+                  <Route path="/verify-email" element={!user ? <VerifyEmail /> : <Navigate to="/" />} />
+                  <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+                  <Route path="/categories" element={<ProtectedRoute><ManageTaxonomies /></ProtectedRoute>} />
+                  <Route path="/sales" element={<ProtectedRoute><Sales /></ProtectedRoute>} />
+                  <Route path="/sales/new" element={<ProtectedRoute><Sales initialView="new" /></ProtectedRoute>} />
+                  <Route path="/returns" element={<ProtectedRoute><Returns /></ProtectedRoute>} />
+                  <Route path="/top-products" element={<ProtectedRoute><TopProducts /></ProtectedRoute>} />
+                  <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
+                  <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+                  <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                  <Route path="/ai" element={<ProtectedRoute><AIAssistant /></ProtectedRoute>} />
+                  <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
+                  <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
+                </Routes>
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </main>
       </div>
     </div>

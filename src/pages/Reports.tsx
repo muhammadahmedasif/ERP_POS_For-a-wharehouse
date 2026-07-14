@@ -40,14 +40,8 @@ import {
 } from "lucide-react";
 
 const COLORS = [
-  "#4f46e5", // Indigo
-  "#7c3aed", // Violet
-  "#c026d3", // Fuchsia
-  "#db2777", // Pink
-  "#2563eb", // Blue
-  "#059669", // Emerald
-  "#d97706", // Amber
-  "#ea580c"  // Orange
+  "#4f46e5", "#7c3aed", "#c026d3", "#db2777",
+  "#2563eb", "#059669", "#d97706", "#ea580c"
 ];
 
 interface SaleItem {
@@ -105,7 +99,7 @@ export default function Reports() {
     });
   }, [sales, dateFilter]);
 
-  // --- STATS CALCULATIONS ---
+  // --- STATS ---
   const totalRevenue = React.useMemo(() => {
     return filteredSales.reduce((acc, sale) => acc + sale.total, 0);
   }, [filteredSales]);
@@ -123,7 +117,7 @@ export default function Reports() {
     return products.filter((p) => p.stock <= 15).length;
   }, [products]);
 
-  // --- CHART 1: DAILY SALES GROUPING ---
+  // --- CHART 1: DAILY SALES ---
   const salesChartData = React.useMemo(() => {
     const grouped: Record<string, number> = {};
     
@@ -136,19 +130,14 @@ export default function Reports() {
     });
 
     return Object.keys(grouped)
-      .map((date) => ({
-        date,
-        revenue: grouped[date],
-      }))
-      // Sort oldest date to newest date roughly by string/index
+      .map((date) => ({ date, revenue: grouped[date] }))
       .reverse();
   }, [filteredSales]);
 
-  // --- CHART 2: PIE CHART (CATEGORY STOCK VALUE DISTRIBUTION) ---
+  // --- CHART 2: CATEGORY PIE ---
   const categoryStockPieData = React.useMemo(() => {
     const valueMap: Record<string, number> = {};
     
-    // Group target product value (price * stock) inside categories
     products.forEach((prod) => {
       const categoryName = prod.category || "Unassigned";
       const totalVal = prod.stock * prod.price;
@@ -160,7 +149,6 @@ export default function Reports() {
       value: Math.round(valueMap[cat]),
     }));
 
-    // If empty dashboard, add default structure so graph doesn't break
     if (data.length === 0) {
       return [{ name: "Ketchup & Sauces", value: 1000 }];
     }
@@ -168,7 +156,7 @@ export default function Reports() {
     return data;
   }, [products]);
 
-  // --- SALES BY PRODUCT (TOP SELLERS) ---
+  // --- TOP SELLERS ---
   const topSellers = React.useMemo(() => {
     const counts: Record<string, { name: string; quantity: number; revenue: number }> = {};
     
@@ -189,7 +177,7 @@ export default function Reports() {
       .slice(0, 5);
   }, [filteredSales]);
 
-  // --- TRIGGER XLS EXPORT CSV DOWNLOAD ---
+  // --- EXPORT CSV ---
   const handleDownloadCSV = () => {
     try {
       let csvContent = "data:text/csv;charset=utf-8,";
@@ -222,7 +210,7 @@ export default function Reports() {
     }
   };
 
-  // --- TRIGGER DETAILED OPERATIONS PDF REPORT DOWNLOAD ---
+  // --- EXPORT PDF ---
   const handleDownloadPDF = () => {
     try {
       const doc = new jsPDF({
@@ -231,95 +219,61 @@ export default function Reports() {
         format: "a4",
       });
 
-      // Colors
-      const primaryColor = [79, 70, 229]; // Indigo
-      const secondaryColor = [5, 150, 105]; // Emerald
-      const darkColor = [30, 41, 59]; // Slate 800
-      const borderSlate = [226, 232, 240]; // Slate 200
+      const primaryColor = [79, 70, 229];
+      const secondaryColor = [5, 150, 105];
+      const darkColor = [30, 41, 59];
+      const borderSlate = [226, 232, 240];
 
-      // Add Document Watermark / Background accents
       doc.setFillColor(252, 253, 255);
       doc.rect(0, 0, 210, 297, "F");
 
-      // --- 1. HEADER BANNER ---
+      // Header
       doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
       doc.rect(0, 0, 210, 24, "F");
-
       doc.setTextColor(255, 255, 255);
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(14);
       doc.text("WHOLESALE ERP PERFORMANCE ANALYTICS REPORT", 14, 10);
-
       doc.setFont("Helvetica", "normal");
       doc.setFontSize(8);
-      doc.text(`Report Level: Executive Summary  |  Created: ${new Date().toLocaleString()}  |  Scope: Sales & Inventory`, 14, 16);
-
-      // Accent border
+      doc.text(`Report Level: Executive Summary | Created: ${new Date().toLocaleString()} | Scope: Sales & Inventory`, 14, 16);
       doc.setFillColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
       doc.rect(0, 24, 210, 2, "F");
 
-      // --- 2. EXECUTIVE METRICS CARDS (Grid layout: 4 cards) ---
+      // Metric cards
       const cardWidth = 42;
       const cardGap = 4.6;
       let startX = 14;
       const startY = 36;
       const cardHeight = 22;
 
-      // Card 1: Total Revenue
-      doc.setFillColor(255, 255, 255);
-      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
-      doc.rect(startX, startY, cardWidth, cardHeight, "FD");
-      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]); // Indicator dot
-      doc.circle(startX + 4, startY + 5, 1.2, "F");
-      doc.setTextColor(100, 116, 139);
-      doc.setFont("Helvetica", "bold");
-      doc.setFontSize(7);
-      doc.text("TOTAL REVENUE", startX + 7, startY + 6);
-      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-      doc.setFontSize(11);
-      doc.text(`Rs. ${totalRevenue.toLocaleString()}`, startX + 4, startY + 13);
-      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-      doc.setFontSize(6.5);
-      doc.text("+12.4% vs last period", startX + 4, startY + 18);
+      const drawCard = (x: number, y: number, w: number, h: number, color: number[], title: string, value: string, subtitle: string) => {
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
+        doc.rect(x, y, w, h, "FD");
+        doc.setFillColor(color[0], color[1], color[2]);
+        doc.circle(x + 4, y + 5, 1.2, "F");
+        doc.setTextColor(100, 116, 139);
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(7);
+        doc.text(title, x + 7, y + 6);
+        doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
+        doc.setFontSize(11);
+        doc.text(value, x + 4, y + 13);
+        doc.setTextColor(color[0], color[1], color[2]);
+        doc.setFontSize(6.5);
+        doc.text(subtitle, x + 4, y + 18);
+      };
 
-      // Card 2: Inventory Asset Net Value
+      drawCard(startX, startY, cardWidth, cardHeight, primaryColor, "TOTAL REVENUE", `Rs. ${totalRevenue.toLocaleString()}`, "+12.4% vs last period");
       startX += cardWidth + cardGap;
-      doc.setFillColor(255, 255, 255);
-      doc.rect(startX, startY, cardWidth, cardHeight, "FD");
-      doc.setFillColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
-      doc.circle(startX + 4, startY + 5, 1.2, "F");
-      doc.setTextColor(100, 116, 139);
-      doc.setFont("Helvetica", "bold");
-      doc.setFontSize(7);
-      doc.text("INVENTORY NET VALUE", startX + 7, startY + 6);
-      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-      doc.setFontSize(11);
-      doc.text(`Rs. ${totalInventoryAssetValue.toLocaleString()}`, startX + 4, startY + 13);
-      doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2]);
-      doc.setFontSize(6.5);
-      doc.text("Wholesale current stock", startX + 4, startY + 18);
-
-      // Card 3: Avg Order Value
+      drawCard(startX, startY, cardWidth, cardHeight, secondaryColor, "INVENTORY NET VALUE", `Rs. ${totalInventoryAssetValue.toLocaleString()}`, "Wholesale current stock");
       startX += cardWidth + cardGap;
-      doc.setFillColor(255, 255, 255);
-      doc.rect(startX, startY, cardWidth, cardHeight, "FD");
-      doc.setFillColor(124, 58, 237); // Purple
-      doc.circle(startX + 4, startY + 5, 1.2, "F");
-      doc.setTextColor(100, 116, 139);
-      doc.setFont("Helvetica", "bold");
-      doc.setFontSize(7);
-      doc.text("AVG ORDER VALUE", startX + 7, startY + 6);
-      doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
-      doc.setFontSize(11);
-      doc.text(`Rs. ${Math.round(averageOrderValue).toLocaleString()}`, startX + 4, startY + 13);
-      doc.setTextColor(124, 58, 237);
-      doc.setFontSize(6.5);
-      doc.text(`Based on ${filteredSales.length} orders`, startX + 4, startY + 18);
-
-      // Card 4: Low Stock Alerts
+      drawCard(startX, startY, cardWidth, cardHeight, [124, 58, 237], "AVG ORDER VALUE", `Rs. ${Math.round(averageOrderValue).toLocaleString()}`, `Based on ${filteredSales.length} orders`);
       startX += cardWidth + cardGap;
       const isLowStockWarning = lowStockCount > 0;
       doc.setFillColor(isLowStockWarning ? 254 : 255, isLowStockWarning ? 242 : 255, isLowStockWarning ? 242 : 255);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
       doc.rect(startX, startY, cardWidth, cardHeight, "FD");
       doc.setFillColor(isLowStockWarning ? 220 : 100, isLowStockWarning ? 38 : 116, isLowStockWarning ? 38 : 139);
       doc.circle(startX + 4, startY + 5, 1.2, "F");
@@ -334,17 +288,14 @@ export default function Reports() {
       doc.setFontSize(6.5);
       doc.text(isLowStockWarning ? "Critical items alert" : "Inv levels satisfying", startX + 4, startY + 18);
 
-      // --- 3. CHARTS CONTAINER GRAPHICS (FULL WIDTH TIMELINE REVENUE MAP) ---
+      // Chart box
       const chartBoxY = 64;
       const chartBoxH = 46;
-      const splitWidth = 182; // Spans entire A4 body printable width (210 - 28)
+      const splitWidth = 182;
 
-      // Timeline chart box
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
       doc.rect(14, chartBoxY, splitWidth, chartBoxH, "FD");
-
-      // Title
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(8.5);
@@ -355,19 +306,15 @@ export default function Reports() {
       const cw = 160;
       const ch = 23;
 
-      // Draw mini axis lines
       doc.setDrawColor(148, 163, 184);
       doc.line(cx, cy, cx + cw, cy);
       doc.line(cx, cy, cx, cy - ch);
-
-      // helper gridline
       doc.setDrawColor(241, 245, 249);
       doc.line(cx, cy - ch/2, cx + cw, cy - ch/2);
 
-      // Draw bars
       if (salesChartData.length > 0) {
         const maxVal = Math.max(...salesChartData.map(d => d.revenue), 1000);
-        const visibleData = salesChartData.slice(-12); // Show the last 12 active periods
+        const visibleData = salesChartData.slice(-12);
         const barW = Math.min((cw - 12) / visibleData.length - 2, 10);
         const spacing = (cw - 12 - (barW * visibleData.length)) / (visibleData.length + 1);
 
@@ -376,17 +323,12 @@ export default function Reports() {
           const barX = cx + 6 + idx * (barW + spacing);
           const barY = cy - barH;
 
-          // Draw the blue bar
           doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
           doc.rect(barX, barY, barW, barH, "F");
-
-          // Value above bar
           doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2]);
           doc.setFont("Helvetica", "bold");
           doc.setFontSize(5.5);
           doc.text(`Rs.${Math.round(d.revenue / 1000)}k`, barX + (barW/2), barY - 1.5, { align: "center" });
-
-          // label below axis
           doc.setTextColor(148, 163, 184);
           doc.setFont("Helvetica", "normal");
           doc.setFontSize(5.5);
@@ -398,7 +340,7 @@ export default function Reports() {
         doc.text("No transactions registered on chart timeline in the current selection", cx + 45, cy - 10);
       }
 
-      // --- 4. TABLE 1: REPLACING PIE CHART WITH IN-DEPTH CATEGORY NET WORTH & VALUATION ---
+      // Category table
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(9.5);
@@ -419,41 +361,21 @@ export default function Reports() {
         const item = categoryValueMap[catName];
         const pct = totalInventoryAssetValue > 0 ? ((item.totalVal / totalInventoryAssetValue) * 100).toFixed(1) + "%" : "0%";
         return [
-          `#${idx + 1}`,
-          catName,
-          `${item.totalProducts} Items`,
-          `${item.totalStock.toLocaleString()} Units`,
-          `Rs. ${item.totalVal.toLocaleString()}`,
-          pct
+          `#${idx + 1}`, catName, `${item.totalProducts} Items`,
+          `${item.totalStock.toLocaleString()} Units`, `Rs. ${item.totalVal.toLocaleString()}`, pct
         ];
       });
 
       autoTable(doc, {
-        startY: 120,
-        margin: { left: 14, right: 14 },
+        startY: 120, margin: { left: 14, right: 14 },
         head: [["Ref", "Wholesale Category", "Unique SKUs", "Total Physical Stock", "Net Asset Valuation", "Portfolio Weight"]],
-        body: categoryTableRows,
-        theme: "striped",
-        headStyles: {
-          fillColor: secondaryColor as [number, number, number], // Emerald green for inventory assets
-          textColor: [255, 255, 255],
-          fontSize: 8,
-          fontStyle: "bold"
-        },
-        styles: {
-          fontSize: 7.5,
-          cellPadding: 2,
-        },
-        columnStyles: {
-          0: { cellWidth: 15 },
-          2: { halign: "center" },
-          3: { halign: "center" },
-          4: { halign: "right" },
-          5: { halign: "right", fontStyle: "bold" }
-        }
+        body: categoryTableRows, theme: "striped",
+        headStyles: { fillColor: secondaryColor as [number, number, number], textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+        styles: { fontSize: 7.5, cellPadding: 2 },
+        columnStyles: { 0: { cellWidth: 15 }, 2: { halign: "center" }, 3: { halign: "center" }, 4: { halign: "right" }, 5: { halign: "right", fontStyle: "bold" } }
       });
 
-      // --- 5. TABLE 2: PRODUCT PERFORMANCE HIGHLIGHTS ---
+      // Top sellers table
       const sellersY = (doc as any).lastAutoTable.finalY + 10;
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.setFont("Helvetica", "bold");
@@ -461,10 +383,7 @@ export default function Reports() {
       doc.text("PRODUCT-WISE DISTRIBUTION & SALES PERFORMANCE INDEX", 14, sellersY);
 
       const tableBodyTopSellers = topSellers.map((item, idx) => [
-        `#${idx + 1}`,
-        item.name,
-        `${item.quantity} Units`,
-        `Rs. ${item.revenue.toLocaleString()}`
+        `#${idx + 1}`, item.name, `${item.quantity} Units`, `Rs. ${item.revenue.toLocaleString()}`
       ]);
 
       if (tableBodyTopSellers.length === 0) {
@@ -472,89 +391,47 @@ export default function Reports() {
       }
 
       autoTable(doc, {
-        startY: sellersY + 3,
-        margin: { left: 14, right: 14 },
+        startY: sellersY + 3, margin: { left: 14, right: 14 },
         head: [["Rank", "Wholesale Item Name", "Sold Volume Quantity", "Total Generated Revenue"]],
-        body: tableBodyTopSellers,
-        theme: "striped",
-        headStyles: {
-          fillColor: primaryColor as [number, number, number],
-          textColor: [255, 255, 255],
-          fontSize: 8,
-          fontStyle: "bold"
-        },
-        styles: {
-          fontSize: 7.5,
-          cellPadding: 2,
-        },
-        columnStyles: {
-          0: { cellWidth: 15 },
-          2: { cellWidth: 35, halign: "center" },
-          3: { cellWidth: 45, halign: "right" }
-        }
+        body: tableBodyTopSellers, theme: "striped",
+        headStyles: { fillColor: primaryColor as [number, number, number], textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+        styles: { fontSize: 7.5, cellPadding: 2 },
+        columnStyles: { 0: { cellWidth: 15 }, 2: { cellWidth: 35, halign: "center" }, 3: { cellWidth: 45, halign: "right" } }
       });
 
-      // --- 6. TABLE 3: CRITICAL LOW STOCK SHEET ---
+      // Low stock table
       const activeY = (doc as any).lastAutoTable.finalY + 10;
-      
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(9.5);
       doc.text("CRITICAL LOW STOCK & RESTOCK TARGET ALERT SHEET", 14, activeY);
 
       const alertProducts = products.filter(p => p.stock <= 15);
-      const lowStockRows = alertProducts.map((p) => {
-        return [
-          p.sku,
-          p.name,
-          p.category,
-          "15 Units",
-          `${p.stock} Units left`
-        ];
-      });
+      const lowStockRows = alertProducts.map((p) => [p.sku, p.name, p.category, "15 Units", `${p.stock} Units left`]);
 
       if (lowStockRows.length === 0) {
         lowStockRows.push(["-", "All wholesale stock items satisfy safe inventory threshold configurations.", "-", "-", "-"]);
       }
 
       autoTable(doc, {
-        startY: activeY + 3,
-        margin: { left: 14, right: 14 },
+        startY: activeY + 3, margin: { left: 14, right: 14 },
         head: [["Inventory SKU", "Product Item Name", "Product Category", "Safety Level", "Live Stock Count Status"]],
-        body: lowStockRows,
-        theme: "striped",
-        headStyles: {
-          fillColor: [185, 28, 28], // Warning Red
-          textColor: [255, 255, 255],
-          fontSize: 8,
-          fontStyle: "bold"
-        },
-        styles: {
-          fontSize: 7.5,
-          cellPadding: 2
-        },
-        columnStyles: {
-          0: { cellWidth: 30 },
-          2: { cellWidth: 30 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 35, halign: "right" }
-        },
+        body: lowStockRows, theme: "striped",
+        headStyles: { fillColor: [185, 28, 28], textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
+        styles: { fontSize: 7.5, cellPadding: 2 },
+        columnStyles: { 0: { cellWidth: 30 }, 2: { cellWidth: 30 }, 3: { cellWidth: 25 }, 4: { cellWidth: 35, halign: "right" } },
         didParseCell: (data) => {
           if (data.column.index === 4 && data.cell.text[0]?.includes("Units left")) {
             const countNum = parseInt(data.cell.text[0]);
-            if (countNum <= 5) {
-              data.cell.styles.textColor = [185, 28, 28];
-              data.cell.styles.fontStyle = "bold";
-            }
+            if (countNum <= 5) { data.cell.styles.textColor = [185, 28, 28]; data.cell.styles.fontStyle = "bold"; }
           }
         }
       });
 
-      // --- 7. REAL-TIME AI SYSTEM INTELLIGENCE INSIGHTS (NEW EXTRA VALUE) ---
+      // Insights
       const finalInsightsY = (doc as any).lastAutoTable.finalY + 10;
       let insightsPageY = finalInsightsY;
       
-      // If close to page boundary, push to new page cleanly
       if (insightsPageY > 235) {
         doc.addPage();
         doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
@@ -563,25 +440,21 @@ export default function Reports() {
         insightsPageY = 25;
       }
 
-      doc.setFillColor(248, 250, 252); // soft slate 50 background
-      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]); // slate 200 border
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(borderSlate[0], borderSlate[1], borderSlate[2]);
       doc.rect(14, insightsPageY, 182, 36, "FD");
-
       doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(9);
       doc.text("WHOLESALE ERP - OPERATIONAL INTELLIGENCE SUMMARY", 19, insightsPageY + 6);
 
-      // Business Insights calculations
       const topSellerItem = topSellers[0];
       const bestProductInsight = topSellerItem 
         ? `• Top Performing SKU: "${topSellerItem.name}" has generated Rs. ${topSellerItem.revenue.toLocaleString()} in revenue with ${topSellerItem.quantity} units sold.` 
         : "• Sales Volume: No wholesale product orders registered in the active filter yet.";
-      
       const lowStockInsight = lowStockCount > 0 
         ? `• Restock Priority: ${lowStockCount} items have fallen below 15 units. High priority restock schedule is advised.`
         : "• Health Alert: Stock levels for all items are within safe operational parameters. No urgent replenishment needed.";
-
       const averageValueFormatted = Math.round(averageOrderValue).toLocaleString();
       const metricsSummaryInsight = `• Deal metrics: Average orders comprise of Rs. ${averageValueFormatted} inside this report scope. High capital categories are performing optimal.`;
 
@@ -592,7 +465,6 @@ export default function Reports() {
       doc.text(lowStockInsight, 19, insightsPageY + 22);
       doc.text(metricsSummaryInsight, 19, insightsPageY + 29);
 
-      // Add Footer on page bottom for all printed pages
       const docPageCount = (doc as any).internal.getNumberOfPages();
       for (let i = 1; i <= docPageCount; i++) {
         doc.setPage(i);
@@ -610,7 +482,7 @@ export default function Reports() {
       console.error("PDF generation failed:", err);
       toast.error('Error generating PDF: ' + (err instanceof Error ? err.message : String(err)));
     }
-  };;
+  };
 
   return (
     <div className="space-y-6">
@@ -618,85 +490,84 @@ export default function Reports() {
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-900">Business Summary</h2>
-          <p className="text-sm text-slate-500 mt-0.5">See how your business is doing at a glance.</p>
+          <h2 className="text-lg font-semibold text-neutral-900">Business Summary</h2>
+          <p className="text-xs text-neutral-400 mt-0.5">See how your business is doing at a glance.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Date Filter */}
-          <div className="inline-flex rounded-lg bg-slate-100 p-0.5 gap-0.5">
+          <div className="inline-flex rounded-lg bg-neutral-100 p-0.5 gap-0.5">
             {(["all", "7days", "30days", "thismonth"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setDateFilter(f)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${
-                  dateFilter === f ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  dateFilter === f ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"
                 }`}
               >
                 {f === "all" ? "All Time" : f === "7days" ? "Last 7 Days" : f === "30days" ? "Last 30 Days" : "This Month"}
               </button>
             ))}
           </div>
-          <Button onClick={handleDownloadPDF} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 text-xs">
+          <Button onClick={handleDownloadPDF}>
             <FileText className="w-3.5 h-3.5 mr-1.5" /> Download Report
           </Button>
         </div>
       </div>
 
-      {/* 4 KEY NUMBERS */}
+      {/* 4 KEY STATS */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card className="border border-slate-100 shadow-sm">
+        <Card>
           <CardContent className="p-5">
             <div className="flex justify-between items-start">
-              <p className="text-xs font-semibold text-slate-500">Total Sales</p>
-              <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><DollarSign className="w-4 h-4" /></div>
+              <p className="text-xs text-neutral-400">Total Sales</p>
+              <div className="p-1.5 bg-primary-50 text-primary-600 rounded-lg"><DollarSign className="w-4 h-4" /></div>
             </div>
-            <p className="text-2xl font-black text-slate-900 mt-2">Rs. {totalRevenue.toLocaleString()}</p>
-            <p className="text-xs text-slate-400 mt-1">{filteredSales.length} orders</p>
+            <p className="text-2xl font-bold text-neutral-900 mt-2">Rs. {totalRevenue.toLocaleString()}</p>
+            <p className="text-xs text-neutral-400 mt-1">{filteredSales.length} orders</p>
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-100 shadow-sm">
+        <Card>
           <CardContent className="p-5">
             <div className="flex justify-between items-start">
-              <p className="text-xs font-semibold text-slate-500">Stock Value</p>
+              <p className="text-xs text-neutral-400">Stock Value</p>
               <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><Package className="w-4 h-4" /></div>
             </div>
-            <p className="text-2xl font-black text-slate-900 mt-2">Rs. {totalInventoryAssetValue.toLocaleString()}</p>
-            <p className="text-xs text-slate-400 mt-1">Current inventory worth</p>
+            <p className="text-2xl font-bold text-neutral-900 mt-2">Rs. {totalInventoryAssetValue.toLocaleString()}</p>
+            <p className="text-xs text-neutral-400 mt-1">Current inventory worth</p>
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-100 shadow-sm">
+        <Card>
           <CardContent className="p-5">
             <div className="flex justify-between items-start">
-              <p className="text-xs font-semibold text-slate-500">Avg. Sale Value</p>
-              <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><ShoppingBag className="w-4 h-4" /></div>
+              <p className="text-xs text-neutral-400">Avg. Sale Value</p>
+              <div className="p-1.5 bg-primary-50 text-primary-600 rounded-lg"><ShoppingBag className="w-4 h-4" /></div>
             </div>
-            <p className="text-2xl font-black text-slate-900 mt-2">Rs. {Math.round(averageOrderValue).toLocaleString()}</p>
-            <p className="text-xs text-slate-400 mt-1">Per order average</p>
+            <p className="text-2xl font-bold text-neutral-900 mt-2">Rs. {Math.round(averageOrderValue).toLocaleString()}</p>
+            <p className="text-xs text-neutral-400 mt-1">Per order average</p>
           </CardContent>
         </Card>
 
-        <Card className={`border shadow-sm ${lowStockCount > 0 ? "border-rose-100 bg-rose-50/20" : "border-slate-100"}`}>
+        <Card className={lowStockCount > 0 ? "border-rose-200 bg-rose-50/30" : ""}>
           <CardContent className="p-5">
             <div className="flex justify-between items-start">
-              <p className="text-xs font-semibold text-slate-500">Low Stock Items</p>
-              <div className={`p-1.5 rounded-lg ${lowStockCount > 0 ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-500"}`}>
+              <p className="text-xs text-neutral-400">Low Stock Items</p>
+              <div className={`p-1.5 rounded-lg ${lowStockCount > 0 ? "bg-rose-100 text-rose-600" : "bg-neutral-100 text-neutral-500"}`}>
                 <AlertTriangle className="w-4 h-4" />
               </div>
             </div>
-            <p className={`text-2xl font-black mt-2 ${lowStockCount > 0 ? "text-rose-700" : "text-slate-900"}`}>{lowStockCount} items</p>
-            <p className="text-xs text-slate-400 mt-1">{lowStockCount > 0 ? "Need restocking soon" : "All levels are fine"}</p>
+            <p className={`text-2xl font-bold mt-2 ${lowStockCount > 0 ? "text-rose-700" : "text-neutral-900"}`}>{lowStockCount} items</p>
+            <p className="text-xs text-neutral-400 mt-1">{lowStockCount > 0 ? "Need restocking soon" : "All levels are fine"}</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* SALES CHART + PIE CHART */}
+      {/* CHARTS */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border border-slate-100 shadow-sm">
+        <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold text-slate-700">Sales Over Time</CardTitle>
-            <p className="text-xs text-slate-400">How much you sold each day</p>
+            <CardTitle>Sales Over Time</CardTitle>
+            <p className="text-xs text-neutral-400">Daily revenue</p>
           </CardHeader>
           <CardContent className="h-[260px]">
             {salesChartData.length > 0 ? (
@@ -711,24 +582,20 @@ export default function Reports() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#94A3B8", fontSize: 11 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: "#94A3B8", fontSize: 11 }} tickFormatter={(v) => `Rs.${v}`} />
-                  <Tooltip
-                    cursor={{ stroke: "#4F46E5", strokeWidth: 1 }}
-                    contentStyle={{ borderRadius: "8px", borderColor: "#F1F5F9", fontSize: "12px" }}
-                    formatter={(v: any) => [`Rs. ${Number(v).toLocaleString()}`, "Sales"]}
-                  />
+                  <Tooltip cursor={{ stroke: "#4F46E5", strokeWidth: 1 }} contentStyle={{ borderRadius: "8px", borderColor: "#F1F5F9", fontSize: "12px" }} formatter={(v: any) => [`Rs. ${Number(v).toLocaleString()}`, "Sales"]} />
                   <Area type="monotone" dataKey="revenue" stroke="#4F46E5" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-slate-400">No sales data yet.</div>
+              <div className="flex h-full items-center justify-center text-sm text-neutral-400">No sales data yet.</div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-100 shadow-sm flex flex-col">
+        <Card className="flex flex-col">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold text-slate-700">Stock by Category</CardTitle>
-            <p className="text-xs text-slate-400">Which category has the most value in stock</p>
+            <CardTitle>Stock by Category</CardTitle>
+            <p className="text-xs text-neutral-400">Value distribution by category</p>
           </CardHeader>
           <CardContent className="flex-1 h-[260px]">
             {products.length > 0 ? (
@@ -752,8 +619,8 @@ export default function Reports() {
                       <div key={item.name} className="flex items-start gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-sm mt-0.5 shrink-0" style={{ backgroundColor: COLORS[idx % COLORS.length] }} />
                         <div>
-                          <p className="text-[10px] font-bold text-slate-700 leading-tight">{item.name}</p>
-                          <p className="text-[10px] text-slate-400">{pct}%</p>
+                          <p className="text-[10px] font-medium text-neutral-700 leading-tight">{item.name}</p>
+                          <p className="text-[10px] text-neutral-400">{pct}%</p>
                         </div>
                       </div>
                     );
@@ -761,37 +628,37 @@ export default function Reports() {
                 </div>
               </div>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-slate-400">Add products to see this chart.</div>
+              <div className="flex h-full items-center justify-center text-sm text-neutral-400">Add products to see this chart.</div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* BEST SELLING PRODUCTS + LOW STOCK */}
+      {/* BEST SELLERS + LOW STOCK */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-12">
-        <Card className="border border-slate-100 shadow-sm lg:col-span-7">
-          <CardHeader className="pb-3 border-b border-slate-50">
-            <CardTitle className="text-sm font-bold text-slate-700">Best Selling Products</CardTitle>
-            <p className="text-xs text-slate-400">Products that made the most money</p>
+        <Card className="lg:col-span-7">
+          <CardHeader className="pb-0">
+            <CardTitle>Best Selling Products</CardTitle>
+            <p className="text-xs text-neutral-400">Products that made the most money</p>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-slate-50">
+            <div className="divide-y divide-border">
               {topSellers.map((item, idx) => (
-                <div key={idx} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors">
+                <div key={idx} className="flex items-center justify-between px-5 py-3 hover:bg-neutral-50 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-black flex items-center justify-center text-xs shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-primary-100 text-primary-700 font-bold flex items-center justify-center text-xs shrink-0">
                       {idx + 1}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-800">{item.name}</p>
-                      <p className="text-xs text-slate-400">{item.quantity} units sold</p>
+                      <p className="text-sm font-medium text-neutral-900">{item.name}</p>
+                      <p className="text-xs text-neutral-400">{item.quantity} units sold</p>
                     </div>
                   </div>
-                  <p className="font-bold text-slate-900 text-sm font-mono">Rs. {item.revenue.toLocaleString()}</p>
+                  <p className="font-semibold text-neutral-900 text-sm">Rs. {item.revenue.toLocaleString()}</p>
                 </div>
               ))}
               {topSellers.length === 0 && (
-                <div className="p-10 text-center text-slate-400 text-sm">
+                <div className="p-10 text-center text-neutral-400 text-sm">
                   <ShoppingBag className="w-8 h-8 mx-auto mb-2 opacity-30" />
                   No sales yet. Make your first sale to see results here.
                 </div>
@@ -800,38 +667,36 @@ export default function Reports() {
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-100 shadow-sm lg:col-span-5">
-          <CardHeader className="pb-3 border-b border-slate-50">
+        <Card className="lg:col-span-5">
+          <CardHeader className="pb-0">
             <div className="flex justify-between items-center">
               <div>
-                <CardTitle className="text-sm font-bold text-rose-700 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4" /> Running Low on Stock
+                <CardTitle className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-rose-500" /> Running Low on Stock
                 </CardTitle>
-                <p className="text-xs text-slate-400 mt-0.5">These items need restocking soon</p>
+                <p className="text-xs text-neutral-400 mt-0.5">These items need restocking soon</p>
               </div>
-              <span className="text-[10px] bg-rose-50 border border-rose-100 px-2 text-rose-700 py-0.5 rounded font-bold">
-                {lowStockCount} item{lowStockCount !== 1 ? "s" : ""}
-              </span>
+              <span className="text-[10px] bg-rose-50 border border-rose-100 px-2 text-rose-700 py-0.5 rounded font-medium">{lowStockCount} item{lowStockCount !== 1 ? "s" : ""}</span>
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-slate-50 max-h-[280px] overflow-y-auto">
+            <div className="divide-y divide-border max-h-[280px] overflow-y-auto">
               {products.filter(p => p.stock <= 15).map((p) => (
-                <div key={p.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                <div key={p.id} className="px-5 py-3 flex items-center justify-between hover:bg-neutral-50 transition-colors">
                   <div>
-                    <p className="text-sm font-bold text-slate-800">{p.name || "Unnamed Product"}</p>
-                    <p className="text-xs text-slate-400">{p.category || "No category"}</p>
+                    <p className="text-sm font-medium text-neutral-900">{p.name || "Unnamed Product"}</p>
+                    <p className="text-xs text-neutral-400">{p.category || "No category"}</p>
                   </div>
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                    p.stock === 0 ? "bg-red-500 text-white" : "bg-rose-100 text-rose-700"
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                    p.stock === 0 ? "bg-rose-500 text-white" : "bg-rose-100 text-rose-700"
                   }`}>
                     {p.stock === 0 ? "Out of stock" : `${p.stock} left`}
                   </span>
                 </div>
               ))}
               {products.filter(p => p.stock <= 15).length === 0 && (
-                <div className="p-10 text-center text-slate-400 text-sm">
-                  All products have enough stock. 
+                <div className="p-10 text-center text-neutral-400 text-sm">
+                  All products have enough stock.
                 </div>
               )}
             </div>

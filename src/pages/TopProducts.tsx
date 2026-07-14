@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Product } from '../types';
 
+const COLORS = ['#4f46e5', '#7c3aed', '#c026d3', '#db2777', '#2563eb', '#059669', '#d97706', '#ea580c'];
+
 export default function TopProducts() {
-  
   
   const [selectedMonth, setSelectedMonth] = useState("");
   const [sales, setSales] = useState<any[]>([]);
@@ -14,14 +15,10 @@ export default function TopProducts() {
   useEffect(() => {
     fetch("/api/products")
       .then((res) => res.json())
-      .then((data: Product[]) => {
-        setProducts(data);
-      });
+      .then((data: Product[]) => { setProducts(data); });
     fetch("/api/sales")
       .then((res) => res.json())
-      .then((data) => {
-        setSales(Array.isArray(data) ? data : []);
-      });
+      .then((data) => { setSales(Array.isArray(data) ? data : []); });
   }, []);
 
   const monthlyData: Record<string, any> = {};
@@ -32,7 +29,6 @@ export default function TopProducts() {
     if (!monthlyData[month]) {
       monthlyData[month] = { productMap: {} };
     }
-
     sale.items?.forEach((item: any) => {
        const productName = products.find(p => p.id === item.productId)?.name || `Prod-${item.productId}`;
        if (!monthlyData[month].productMap[productName]) {
@@ -63,18 +59,17 @@ export default function TopProducts() {
 
   const currentData = monthlyData[selectedMonth]?.topProducts || [];
 
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h2 className="text-xl font-bold text-slate-800">Top Selling Products</h2>
-        <div className="flex items-center space-x-2 bg-white rounded-md p-1 shadow-sm border border-slate-200 overflow-x-auto no-scrollbar whitespace-nowrap">
+        <div>
+          <h2 className="text-lg font-semibold text-neutral-900">Top Selling Products</h2>
+          <p className="text-xs text-neutral-400 mt-0.5">Revenue breakdown by product per month.</p>
+        </div>
+        <div className="flex items-center gap-1 bg-neutral-100 rounded-lg p-0.5 overflow-x-auto">
           {Object.keys(monthlyData).map(m => (
-             <button 
-               key={m} 
-               onClick={() => setSelectedMonth(m)}
-               className={`px-4 py-1.5 text-sm font-bold rounded-sm transition-colors ${selectedMonth === m ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:text-slate-800'}`}
-             >
+             <button key={m} onClick={() => setSelectedMonth(m)}
+               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${selectedMonth === m ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500 hover:text-neutral-800'}`}>
                {m}
              </button>
           ))}
@@ -83,7 +78,7 @@ export default function TopProducts() {
       
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Revenue by Product ({selectedMonth})</CardTitle>
+          <CardTitle>Revenue by Product ({selectedMonth})</CardTitle>
         </CardHeader>
         <CardContent className="h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
@@ -94,7 +89,7 @@ export default function TopProducts() {
               <Tooltip cursor={{fill: '#F1F5F9'}} />
               <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
                 {currentData.map((entry: any, index: number) => (
-                  <Cell key={`cell-${index}`} fill={['#4f46e5', '#7c3aed', '#c026d3', '#db2777', '#2563eb', '#059669', '#d97706', '#ea580c'][index % 8]} />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Bar>
             </BarChart>

@@ -3,6 +3,8 @@ import { useSearchParams, Link } from "react-router-dom";
 import { motion } from "motion/react";
 import { CheckCircle, XCircle, Loader2, RefreshCw, Mail, ArrowRight } from "lucide-react";
 import Logo from "../components/Logo";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -27,7 +29,7 @@ export default function VerifyEmail() {
         body: JSON.stringify({ token }),
       });
       const data = await res.json();
-      
+
       if (res.ok && data.success) {
         setStatus("success");
         setMessage(data.message || "Your email has been verified!");
@@ -63,10 +65,10 @@ export default function VerifyEmail() {
   };
 
   const statusIcon = {
-    idle: <div className="w-20 h-20 rounded-full bg-indigo-100/60 flex items-center justify-center"><Mail className="w-10 h-10 text-indigo-500" /></div>,
-    loading: <div className="w-20 h-20 rounded-full bg-indigo-100/60 flex items-center justify-center"><Loader2 className="w-10 h-10 text-indigo-500 animate-spin" /></div>,
-    success: <div className="w-20 h-20 rounded-full bg-emerald-100/60 flex items-center justify-center"><CheckCircle className="w-10 h-10 text-emerald-500" /></div>,
-    error: <div className="w-20 h-20 rounded-full bg-rose-100/60 flex items-center justify-center"><XCircle className="w-10 h-10 text-rose-500" /></div>,
+    idle: <div className="w-20 h-20 rounded-full bg-primary-100 flex items-center justify-center"><Mail className="w-10 h-10 text-primary-600" /></div>,
+    loading: <div className="w-20 h-20 rounded-full bg-primary-100 flex items-center justify-center"><Loader2 className="w-10 h-10 text-primary-600 animate-spin" /></div>,
+    success: <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center"><CheckCircle className="w-10 h-10 text-emerald-500" /></div>,
+    error: <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center"><XCircle className="w-10 h-10 text-red-500" /></div>,
   };
 
   const statusTitle = {
@@ -77,20 +79,16 @@ export default function VerifyEmail() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center relative auth-bg overflow-hidden p-4">
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/20 rounded-full mix-blend-multiply filter blur-3xl opacity-50"></div>
-      <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-emerald-300/20 rounded-full mix-blend-multiply filter blur-3xl opacity-50"></div>
-      <div className="absolute -bottom-32 left-1/2 w-96 h-96 bg-indigo-300/20 rounded-full mix-blend-multiply filter blur-3xl opacity-50"></div>
-
-      <motion.div 
+    <div className="flex min-h-screen items-center justify-center bg-neutral-50 p-4">
+      <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.5, ease: "easeOut" }}
-        className="w-full max-w-md rounded-3xl glass-premium p-10 relative z-10 text-center"
+        className="w-full max-w-md rounded-xl bg-white border border-border shadow-sm p-10 text-center"
       >
         <div className="flex flex-col items-center mb-8">
           <Logo size="md" showText={false} className="mb-6" />
-          
+
           <motion.div
             key={status}
             initial={{ scale: 0.8, opacity: 0 }}
@@ -100,68 +98,51 @@ export default function VerifyEmail() {
           >
             {statusIcon[status]}
           </motion.div>
-          
-          <h2 className="text-3xl font-extrabold tracking-tight text-slate-800 mb-2">{statusTitle[status]}</h2>
-          <p className="text-sm text-slate-500 font-medium max-w-xs">{message}</p>
+
+          <h2 className="text-3xl font-medium tracking-tight text-neutral-900 mb-2">{statusTitle[status]}</h2>
+          <p className="text-sm text-neutral-500 font-medium max-w-xs">{message}</p>
         </div>
 
         {status === "idle" && (
-          <motion.button 
-            onClick={verifyEmail}
-            whileHover={{ scale: 1.01, translateY: -1 }}
-            whileTap={{ scale: 0.99 }}
-            className="w-full rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 p-4 text-sm font-extrabold text-white shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all relative overflow-hidden group cursor-pointer"
-          >
-            <span className="relative z-10">Verify My Email</span>
-            <div className="absolute inset-0 h-full w-full bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
-          </motion.button>
+          <Button onClick={verifyEmail} className="w-full rounded-xl cursor-pointer">
+            Verify My Email
+          </Button>
         )}
 
         {status === "error" && (
           <div className="space-y-3">
             {token && (
-              <motion.button 
-                onClick={verifyEmail}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-indigo-200/60 bg-white/50 p-3.5 text-sm font-bold text-indigo-600 hover:bg-indigo-50/50 transition-all cursor-pointer"
-              >
+              <Button onClick={verifyEmail} variant="outline" className="w-full rounded-xl cursor-pointer">
                 <RefreshCw className="w-4 h-4" />
                 Try Again
-              </motion.button>
+              </Button>
             )}
-            
-            <div className="pt-4 border-t border-slate-100/50">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Resend Verification</p>
+
+            <div className="pt-4 border-t border-border">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-neutral-400 mb-2">Resend Verification</p>
               <div className="relative mb-3">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Mail className="h-4 w-4 text-slate-400" />
+                  <Mail className="h-4 w-4 text-neutral-400" />
                 </div>
-                <input
+                <Input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200/60 bg-white/50 pl-11 pr-4 py-3.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 focus:bg-white transition-all placeholder:text-slate-400"
+                  className="pl-11"
                   placeholder="Enter your email"
                 />
               </div>
-              <motion.button 
-                onClick={resendVerification}
-                disabled={resending || !email}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                className="w-full rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 p-3.5 text-sm font-extrabold text-white shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all disabled:opacity-70 cursor-pointer"
-              >
+              <Button onClick={resendVerification} disabled={resending || !email} className="w-full rounded-xl cursor-pointer">
                 {resending ? "Sending..." : "Resend Link"}
-              </motion.button>
+              </Button>
             </div>
           </div>
         )}
 
         {status === "success" && (
-          <Link 
+          <Link
             to="/login"
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 p-4 text-sm font-extrabold text-white shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 transition-all"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 text-white px-4 py-3 text-sm font-medium shadow-sm hover:bg-primary-700 active:bg-primary-800 transition-colors"
           >
             Continue to Login <ArrowRight className="w-4 h-4" />
           </Link>
